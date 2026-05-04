@@ -1,8 +1,7 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getLastEvent } from '@/lib/services/meetings'
-import { getPointsForPrediction } from '@/lib/services/scoring'
-import type { Prediction } from '@/lib/types'
+import { refreshPointsForSession } from '@/lib/services/scoring'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -20,13 +19,19 @@ export async function getLastFinishedRaceEnd(): Promise<string | null> {
   }
 }
 
+type MeetingRelation = { year: number } | { year: number }[] | null
+
+function getMeetingYear(meetings: MeetingRelation): number | null {
+  const meeting = Array.isArray(meetings) ? meetings[0] : meetings
+  return meeting?.year ?? null
+}
+
 /**
- * Backfill missing prediction points for pool members: for each prediction with
- * points = null for a race that already has a result, calculate and save points.
- * Uses admin client so we can read/update any user's predictions (RLS bypass).
- * Returns the set of user_ids that had at least one prediction updated (so season total must be recalc'd).
+ * Refresh points for finished sessions that affect the requested users.
+ * Results are fetched from OpenF1 once per session; if a result is unavailable,
+ * existing stored points are left untouched.
  */
-async function backfillMissingPredictionPoints(
+async function refreshAvailablePredictionPointsForUsers(
   admin: ReturnType<typeof createAdminClient>,
   userIds: string[],
   year: number
@@ -34,46 +39,29 @@ async function backfillMissingPredictionPoints(
   const updatedUserIds = new Set<string>()
   if (userIds.length === 0) return updatedUserIds
 
-  const { data: predictionsRaw, error } = await admin
+  const { data: predictionSessions, error } = await admin
     .from('predictions')
-    .select('*, meetings!inner(meeting_key, year)')
+    .select('session_key, meetings!inner(year)')
     .in('user_id', userIds)
-    .is('points', null)
     .not('session_key', 'is', null)
 
-  if (error || !predictionsRaw?.length) return updatedUserIds
+  if (error || !predictionSessions?.length) {
+    if (error) console.error('Error fetching prediction sessions:', error)
+    return updatedUserIds
+  }
 
-  const forYear = predictionsRaw.filter(
-    (p: { meetings: { year: number } | { year: number }[] }) => {
-      const m = Array.isArray(p.meetings) ? p.meetings[0] : p.meetings
-      return m?.year === year
-    }
+  const sessionKeys = Array.from(
+    new Set(
+      predictionSessions
+        .filter((row: { meetings?: MeetingRelation }) => getMeetingYear(row.meetings ?? null) === year)
+        .map((row: { session_key: number | null }) => row.session_key)
+        .filter((sessionKey): sessionKey is number => typeof sessionKey === 'number')
+    )
   )
 
-  for (const row of forYear) {
-    if (typeof row.session_key !== 'number') continue
-
-    const prediction: Prediction = {
-      id: row.id,
-      user_id: row.user_id,
-      race_id: row.race_id,
-      session_key: row.session_key,
-      position_1: row.position_1,
-      position_2: row.position_2,
-      position_3: row.position_3,
-      position_4: row.position_4,
-      position_5: row.position_5,
-      position_6: row.position_6,
-      position_7: row.position_7,
-      position_8: row.position_8,
-      position_9: row.position_9,
-      position_10: row.position_10,
-      points: row.points,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    }
-    const newPoints = await getPointsForPrediction(prediction, row.session_key, admin)
-    if (newPoints != null) updatedUserIds.add(row.user_id)
+  for (const sessionKey of sessionKeys) {
+    const updatedForSession = await refreshPointsForSession(sessionKey, admin)
+    updatedForSession.forEach((userId) => updatedUserIds.add(userId))
   }
 
   return updatedUserIds
@@ -82,73 +70,81 @@ async function backfillMissingPredictionPoints(
 /**
  * Compute total prediction points for a user in a given season (sum over races in that year).
  */
-async function computeUserSeasonPoints(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
+async function computeSeasonPointsForUsers(
+  supabase: SupabaseClient,
+  userIds: string[],
   year: number
-): Promise<number> {
+): Promise<Record<string, number>> {
+  const totals = Object.fromEntries(userIds.map((userId) => [userId, 0]))
+  if (userIds.length === 0) return totals
+
   const { data: rows, error } = await supabase
     .from('predictions')
-    .select('points, meetings!inner(year)')
-    .eq('user_id', userId)
+    .select('user_id, points, meetings!inner(year)')
+    .in('user_id', userIds)
 
   if (error) {
     console.error('Error computing season points:', error)
-    return 0
+    return totals
   }
 
-  const forYear = (rows ?? []).filter((r: { points?: number | null; meetings?: { year: number } | { year: number }[] | null }) => {
-    const m = Array.isArray(r.meetings) ? r.meetings[0] : r.meetings
-    return m?.year === year
-  })
-  const total = forYear.reduce(
-    (sum: number, r: { points?: number | null }) => sum + (r.points ?? 0),
-    0
-  )
-  return total
+  for (const row of rows ?? []) {
+    const typedRow = row as { user_id: string; points?: number | null; meetings?: MeetingRelation }
+    if (getMeetingYear(typedRow.meetings ?? null) !== year) continue
+    totals[typedRow.user_id] = (totals[typedRow.user_id] ?? 0) + (typedRow.points ?? 0)
+  }
+
+  return totals
+}
+
+async function upsertSeasonPointsForUsers(
+  supabase: SupabaseClient,
+  totals: Record<string, number>,
+  year: number
+): Promise<void> {
+  const now = new Date().toISOString()
+  const rows = Object.entries(totals).map(([userId, points]) => ({
+    user_id: userId,
+    season_year: year,
+    points,
+    updated_at: now,
+  }))
+
+  if (rows.length === 0) return
+
+  const { error } = await supabase
+    .from('user_season_scores')
+    .upsert(rows, { onConflict: 'user_id,season_year' })
+
+  if (error) {
+    console.error('Error saving season points:', error)
+  }
+}
+
+export async function refreshUserSeasonPoints(
+  userId: string,
+  year: number = CURRENT_YEAR,
+  client?: SupabaseClient
+): Promise<number> {
+  const supabase = client ?? createAdminClient()
+  const totals = await computeSeasonPointsForUsers(supabase, [userId], year)
+  await upsertSeasonPointsForUsers(supabase, totals, year)
+  return totals[userId] ?? 0
 }
 
 /**
- * Get or compute season points for one user. Uses cache if it exists and was updated
- * after the end of the last finished race; otherwise recalculates and upserts.
+ * Refresh available race points, then recompute and save season points for one user.
  */
 export async function getOrComputeUserSeasonPoints(
   userId: string,
   year: number = CURRENT_YEAR
 ): Promise<number> {
-  const supabase = await createClient()
-  const lastEnd = await getLastFinishedRaceEnd()
-
-  const { data: row } = await supabase
-    .from('user_season_scores')
-    .select('points, updated_at')
-    .eq('user_id', userId)
-    .eq('season_year', year)
-    .single()
-
-  const useCache =
-    row &&
-    (lastEnd == null || new Date(row.updated_at) >= new Date(lastEnd))
-
-  if (useCache) {
-    return row!.points
-  }
-
-  const points = await computeUserSeasonPoints(supabase, userId, year)
-  await supabase.from('user_season_scores').upsert(
-    {
-      user_id: userId,
-      season_year: year,
-      points,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id,season_year' }
-  )
-  return points
+  const result = await getOrComputeSeasonPointsForUsers([userId], year)
+  return result[userId] ?? 0
 }
 
 /**
- * Get or compute season points for multiple users (e.g. pool members).
+ * Refresh available race points, then recompute and save season points for multiple users.
  * Returns a map of user_id -> points.
  */
 export async function getOrComputeSeasonPointsForUsers(
@@ -159,46 +155,8 @@ export async function getOrComputeSeasonPointsForUsers(
 
   const admin = createAdminClient()
 
-  // Backfill missing prediction points for races that already have a result (admin bypasses RLS)
-  const backfilledUserIds = await backfillMissingPredictionPoints(admin, userIds, year)
-
-  const lastEnd = await getLastFinishedRaceEnd()
-
-  const { data: rows } = await admin
-    .from('user_season_scores')
-    .select('user_id, points, updated_at')
-    .eq('season_year', year)
-    .in('user_id', userIds)
-
-  const result: Record<string, number> = {}
-  const toRecalc: string[] = []
-
-  for (const userId of userIds) {
-    const row = rows?.find((r) => r.user_id === userId)
-    const useCache =
-      row &&
-      (lastEnd == null || new Date(row.updated_at) >= new Date(lastEnd)) &&
-      !backfilledUserIds.has(userId)
-    if (useCache) {
-      result[userId] = row.points
-    } else {
-      toRecalc.push(userId)
-    }
-  }
-
-  for (const userId of toRecalc) {
-    const points = await computeUserSeasonPoints(admin, userId, year)
-    result[userId] = points
-    await admin.from('user_season_scores').upsert(
-      {
-        user_id: userId,
-        season_year: year,
-        points,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,season_year' }
-    )
-  }
-
+  await refreshAvailablePredictionPointsForUsers(admin, userIds, year)
+  const result = await computeSeasonPointsForUsers(admin, userIds, year)
+  await upsertSeasonPointsForUsers(admin, result, year)
   return result
 }

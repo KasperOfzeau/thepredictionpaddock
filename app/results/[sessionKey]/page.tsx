@@ -4,6 +4,7 @@ import Nav from '@/components/Nav'
 import ResultPageContent from '@/components/ResultPageContent'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForPrediction } from '@/lib/services/scoring'
+import { refreshUserSeasonPoints } from '@/lib/services/seasonScores'
 import { getQualifyingForMeeting } from '@/lib/services/sessions'
 import { createClient } from '@/lib/supabase/server'
 
@@ -108,6 +109,9 @@ export default async function ResultPage({ params, searchParams }: PageProps) {
     ?? qualifyingSessions[0]
     ?? null
   const points = await getPointsForPrediction(prediction ?? null, session.session_key, admin)
+  if (points != null) {
+    await refreshUserSeasonPoints(profile.id, session.year, admin)
+  }
 
   const sessionDate = new Date(session.date_start).toLocaleDateString('en-GB', {
     weekday: 'short',

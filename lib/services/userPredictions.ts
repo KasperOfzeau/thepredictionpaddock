@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { Prediction } from '@/lib/types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getQualifyingForMeeting } from '@/lib/services/sessions'
+import { refreshPointsForSession } from '@/lib/services/scoring'
 
 export interface PredictionWithMeta {
   prediction: Prediction
@@ -37,9 +38,11 @@ export async function getRecentPredictionsForUser(
     query = query.limit(limit)
   }
 
-  const { data: rows, error } = await query
+  const { data: initialRows, error } = await query
 
-  if (error || !rows?.length) return []
+  if (error || !initialRows?.length) return []
+
+  let rows = initialRows
 
   const sessionKeys = Array.from(
     new Set(
@@ -48,6 +51,22 @@ export async function getRecentPredictionsForUser(
         .filter((sessionKey): sessionKey is number => typeof sessionKey === 'number')
     )
   )
+
+  await Promise.all(
+    sessionKeys.map((sessionKey) => refreshPointsForSession(sessionKey, supabase))
+  )
+
+  const predictionIds = rows.map((row) => row.id)
+  const { data: refreshedRows } = await supabase
+    .from('predictions')
+    .select('*')
+    .in('id', predictionIds)
+
+  if (refreshedRows?.length) {
+    const refreshedById = new Map(refreshedRows.map((row) => [row.id, row]))
+    rows = rows.map((row) => refreshedById.get(row.id) ?? row)
+  }
+
   const meetingIds = Array.from(new Set(rows.map((row) => row.race_id)))
 
   const [{ data: sessions }, { data: meetings }] = await Promise.all([
