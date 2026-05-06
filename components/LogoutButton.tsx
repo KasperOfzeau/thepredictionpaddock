@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 
 const supabase = createClient()
 
-export default function LogoutButton() {
+export default function LogoutButton({ className }: { className?: string }) {
   const router = useRouter()
 
   const handleLogout = async () => {
@@ -18,7 +18,7 @@ export default function LogoutButton() {
     <button
       type="button"
       onClick={handleLogout}
-      className="inline-flex items-center gap-2 text-sm font-medium text-f1-red hover:text-f1-red-hover transition-colors shrink-0"
+      className={`inline-flex items-center gap-2 text-sm font-medium transition-colors shrink-0 ${className ?? 'text-f1-red hover:text-f1-red-hover'}`}
       title="Log out"
     >
       <svg

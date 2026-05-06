@@ -116,15 +116,15 @@ export default function PushNotificationToggle() {
   if (status === 'loading') {
     return (
       <div className="flex items-center gap-3 py-1">
-        <div className="h-6 w-11 rounded-full bg-gray-200 animate-pulse" />
-        <span className="text-sm text-gray-400">Loading...</span>
+        <div className="h-6 w-11 animate-pulse rounded-full bg-white/15" />
+        <span className="text-sm text-white/55">Loading...</span>
       </div>
     )
   }
 
   if (status === 'unsupported') {
     return (
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-white/55">
         Push notifications are not supported by your browser.
         On iOS, add this site to your home screen first.
       </p>
@@ -133,7 +133,7 @@ export default function PushNotificationToggle() {
 
   if (status === 'denied') {
     return (
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-white/55">
         Notifications are blocked. Please enable them in your browser settings and reload this page.
       </p>
     )
@@ -150,8 +150,8 @@ export default function PushNotificationToggle() {
           aria-checked={enabled}
           disabled={busy}
           onClick={enabled ? unsubscribe : subscribe}
-          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-f1-red focus:ring-offset-2 disabled:opacity-50 ${
-            enabled ? 'bg-f1-red' : 'bg-gray-200'
+          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-f1-red focus:ring-offset-2 focus:ring-offset-carbon-black disabled:opacity-50 ${
+            enabled ? 'bg-f1-red' : 'bg-white/20'
           }`}
         >
           <span
@@ -160,7 +160,7 @@ export default function PushNotificationToggle() {
             }`}
           />
         </button>
-        <span className="text-sm text-gray-700">
+        <span className="text-sm text-white">
           {busy
             ? 'Working...'
             : enabled
@@ -168,7 +168,7 @@ export default function PushNotificationToggle() {
               : 'Notifications disabled'}
         </span>
       </div>
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="text-sm text-red-400">{error}</p> : null}
     </div>
   )
 }

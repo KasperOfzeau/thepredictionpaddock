@@ -31,6 +31,23 @@ export interface Profile {
   full_name: string | null
   username: string | null
   avatar_url: string | null
+  /** Optional public bio (max length enforced in UI); requires `bio` column on profiles */
+  bio?: string | null
+}
+
+export interface ProfileGarage {
+  id: string
+  user_id: string
+  season_year: number
+  favorite_driver_number: number | null
+  favorite_driver_name: string | null
+  favorite_driver_team_name: string | null
+  favorite_driver_team_colour: string | null
+  favorite_driver_headshot_url: string | null
+  favorite_team_name: string | null
+  favorite_team_colour: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface Notification {

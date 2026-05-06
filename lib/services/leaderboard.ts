@@ -62,6 +62,19 @@ async function getRankedLeaderboardEntries(): Promise<Omit<LeaderboardEntry, 'ra
 }
 
 /**
+ * Global rank and season points for a single user (current year leaderboard ordering).
+ * Returns null if the user has no username on their profile (excluded from ranking).
+ */
+export async function getGlobalLeaderboardRankForUser(
+  userId: string
+): Promise<{ rank: number; total_points: number } | null> {
+  const rankedEntries = await getRankedLeaderboardEntries()
+  const idx = rankedEntries.findIndex((e) => e.user_id === userId)
+  if (idx === -1) return null
+  return { rank: idx + 1, total_points: rankedEntries[idx].total_points }
+}
+
+/**
  * Get global leaderboard - top players by season score (current year).
  * Uses admin client so the leaderboard can be shown on the public home page (no RLS block).
  * @param limit - Number of top players to return (default 5)
