@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import Link from 'next/link'
+import AvatarWithDecoration from '@/components/AvatarWithDecoration'
 
 const supabase = createClient()
 
@@ -18,6 +18,7 @@ interface Member {
     username: string
     full_name: string
     avatar_url?: string | null
+    avatar_decoration_id?: string | null
   }
 }
 
@@ -61,10 +62,6 @@ export default function PoolMembersList({ members, isAdmin, poolId, currentUserI
     router.refresh()
   }
 
-  const getDisplayLetter = (member: Member) => {
-    return member.profiles.username?.charAt(0)?.toUpperCase() || '?'
-  }
-
   return (
     <div className={`space-y-2 ${hasDesktopRemoveButton ? 'sm:pr-12' : ''}`}>
       {error && (
@@ -89,21 +86,15 @@ export default function PoolMembersList({ members, isAdmin, poolId, currentUserI
                     href={`/profile/${encodeURIComponent(member.profiles.username)}`}
                     className="flex min-w-0 flex-1 items-center gap-4 hover:opacity-90"
                   >
-                    <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full border border-white/10 bg-white/10">
-                      {member.profiles.avatar_url ? (
-                        <Image
-                          src={member.profiles.avatar_url}
-                          alt={member.profiles.username}
-                          fill
-                          className="object-cover"
-                          sizes="40px"
-                        />
-                      ) : (
-                        <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-white/70">
-                          {getDisplayLetter(member)}
-                        </span>
-                      )}
-                    </div>
+                    <AvatarWithDecoration
+                      avatarUrl={member.profiles.avatar_url}
+                      username={member.profiles.username}
+                      decorationId={member.profiles.avatar_decoration_id ?? null}
+                      size={40}
+                      avatarClassName="border border-white/10"
+                      fallbackTextClassName="text-sm text-white/70"
+                      alt={member.profiles.username}
+                    />
 
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">

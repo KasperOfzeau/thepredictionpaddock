@@ -11,6 +11,7 @@ import { getRecentPredictionsForUser } from '@/lib/services/userPredictions'
 import { getGlobalLeaderboardRankForUser } from '@/lib/services/leaderboard'
 import { getGarageForUser } from '@/lib/services/garage'
 import UserPredictionsList from '@/components/UserPredictionsList'
+import AvatarWithDecoration from '@/components/AvatarWithDecoration'
 
 interface PageProps {
   params: Promise<{ username: string }>
@@ -24,6 +25,7 @@ interface ProfilePublicRow {
   full_name: string | null
   created_at: string | null
   bio: string | null
+  avatar_decoration_id: string | null
 }
 
 const stripeOverlayStyle = {
@@ -75,6 +77,8 @@ const getProfileByUsername = cache(async (username: string) => {
       return {
         ...d,
         bio: typeof d.bio === 'string' ? d.bio : null,
+        avatar_decoration_id:
+          typeof d.avatar_decoration_id === 'string' ? d.avatar_decoration_id : null,
       } as ProfilePublicRow
     }
   }
@@ -103,7 +107,6 @@ export default async function ProfileByUsernamePage({ params }: PageProps) {
 
   const isOwnProfile = !!currentUser && currentUser.id === profile.id
 
-  const displayLetter = profile.username?.charAt(0)?.toUpperCase() || '?'
   const shareUsername = profile.username ?? null
 
   const currentSeasonYear =
@@ -177,21 +180,15 @@ export default async function ProfileByUsernamePage({ params }: PageProps) {
 
           <div className="-mt-12 flex flex-col gap-5 px-5 pb-0 sm:px-6 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-end">
-              <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full bg-white/10 shadow-[0_0_0_4px_rgba(255,24,1,0.35)] ring-4 ring-carbon-black">
-                {profile.avatar_url ? (
-                  <Image
-                    src={profile.avatar_url}
-                    alt={profile.username ? `@${profile.username}` : 'Profile'}
-                    fill
-                    className="object-cover"
-                    sizes="112px"
-                  />
-                ) : (
-                  <span className="absolute inset-0 flex items-center justify-center text-4xl font-semibold text-white/50">
-                    {displayLetter}
-                  </span>
-                )}
-              </div>
+              <AvatarWithDecoration
+                avatarUrl={profile.avatar_url}
+                username={profile.username}
+                decorationId={profile.avatar_decoration_id}
+                size={112}
+                avatarClassName="shadow-[0_0_0_4px_rgba(255,24,1,0.35)] ring-4 ring-carbon-black"
+                fallbackTextClassName="text-4xl text-white/50"
+                alt={profile.username ? `@${profile.username}` : 'Profile'}
+              />
               <div className="min-w-0 text-center sm:pb-1 sm:text-left">
                 <h1 className="text-3xl font-bold text-white sm:text-4xl">
                   @{profile.username}

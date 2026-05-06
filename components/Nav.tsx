@@ -4,12 +4,14 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { useEffect, useState } from 'react'
+import AvatarWithDecoration from '@/components/AvatarWithDecoration'
 
 const supabase = createClient()
 
 export default function Nav() {
   const [username, setUsername] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [avatarDecorationId, setAvatarDecorationId] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
 
   useEffect(() => {
@@ -19,13 +21,14 @@ export default function Nav() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('username, avatar_url')
+        .select('username, avatar_url, avatar_decoration_id')
         .eq('id', user.id)
         .single()
 
       if (profile) {
         setUsername(profile.username ?? null)
         setAvatarUrl(profile.avatar_url ?? null)
+        setAvatarDecorationId(profile.avatar_decoration_id ?? null)
       }
 
       const { count } = await supabase
@@ -45,8 +48,6 @@ export default function Nav() {
 
     return () => subscription.unsubscribe()
   }, [])
-
-  const displayLetter = username?.charAt(0)?.toUpperCase() || '?'
 
   return (
     <nav className="bg-[#0a0a0c] shadow-sm">
@@ -89,21 +90,15 @@ export default function Nav() {
                 href={username ? `/profile/${encodeURIComponent(username)}` : '/profile'}
                 className="flex items-center gap-2 text-sm text-zinc-300 hover:text-white transition-colors"
               >
-                <div className="relative w-8 h-8 rounded-full overflow-hidden bg-zinc-600 shrink-0 ring-2 ring-zinc-500 transition-all">
-                  {avatarUrl ? (
-                    <Image
-                      src={avatarUrl}
-                      alt="Profile"
-                      fill
-                      className="object-cover"
-                      sizes="32px"
-                    />
-                  ) : (
-                    <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-zinc-400">
-                      {displayLetter}
-                    </span>
-                  )}
-                </div>
+                <AvatarWithDecoration
+                  avatarUrl={avatarUrl}
+                  username={username}
+                  decorationId={avatarDecorationId}
+                  size={32}
+                  avatarClassName="bg-zinc-600 ring-2 ring-zinc-500 transition-all"
+                  fallbackTextClassName="text-sm text-zinc-400"
+                  alt="Profile"
+                />
                 <span className="hidden sm:inline">@{username}</span>
               </Link>
             </div>

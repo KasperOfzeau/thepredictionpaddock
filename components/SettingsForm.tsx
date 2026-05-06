@@ -1,10 +1,15 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import Image from 'next/image'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
+import AvatarWithDecoration from '@/components/AvatarWithDecoration'
+import AvatarDecorationDropdown from '@/components/AvatarDecorationDropdown'
+import {
+  getAvatarDecorationById,
+  type AvatarDecorationStats,
+} from '@/lib/avatarDecorations'
 
 const AVATAR_BUCKET = 'avatars'
 const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB (original; after compression much smaller)
@@ -34,19 +39,31 @@ interface Profile {
   username: string | null
   avatar_url: string | null
   bio?: string | null
+  avatar_decoration_id?: string | null
 }
 
 interface SettingsFormProps {
   user: User
   profile: Profile | null
+  predictionCount: number
+  /** Decoration ids the user has been manually granted via `user_avatar_decorations`. */
+  manualDecorationGrants: string[]
 }
 
-export default function SettingsForm({ user, profile }: SettingsFormProps) {
+export default function SettingsForm({
+  user,
+  profile,
+  predictionCount,
+  manualDecorationGrants,
+}: SettingsFormProps) {
   const [fullName, setFullName] = useState(profile?.full_name || '')
   const [username, setUsername] = useState(profile?.username || '')
   const [bio, setBio] = useState(profile?.bio?.trim() === '' ? '' : (profile?.bio ?? ''))
   const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url ?? null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarDecorationId, setAvatarDecorationId] = useState<string | null>(
+    profile?.avatar_decoration_id ?? null,
+  )
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,12 +71,26 @@ export default function SettingsForm({ user, profile }: SettingsFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
+  const manualGrantsKey = manualDecorationGrants.join(',')
+  const decorationStats = useMemo<AvatarDecorationStats>(
+    () => ({
+      predictionCount,
+      bestRacePoints: null,
+      globalRank: null,
+      manualGrants: new Set(manualDecorationGrants),
+    }),
+    // manualDecorationGrants is a fresh array on every render; key on its content.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [predictionCount, manualGrantsKey],
+  )
+
   useEffect(() => {
     if (!profile) return
     setFullName(profile.full_name || '')
     setUsername(profile.username || '')
     setAvatarUrl(profile.avatar_url ?? null)
     setBio(profile.bio?.trim() === '' || profile.bio == null ? '' : profile.bio)
+    setAvatarDecorationId(profile.avatar_decoration_id ?? null)
   }, [profile])
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
@@ -96,6 +127,14 @@ export default function SettingsForm({ user, profile }: SettingsFormProps) {
       }
     }
 
+    const decoration = getAvatarDecorationById(avatarDecorationId)
+    if (avatarDecorationId && (!decoration || !decoration.isUnlocked(decorationStats))) {
+      setError('That avatar decoration is not unlocked yet.')
+      setLoading(false)
+      return
+    }
+    const decorationToSave = decoration ? decoration.id : null
+
     const bioTrimmed = bio.trim()
     const { error: updateError } = await supabase
       .from('profiles')
@@ -104,6 +143,7 @@ export default function SettingsForm({ user, profile }: SettingsFormProps) {
         username: username.toLowerCase(),
         avatar_url: avatarUrl || null,
         bio: bioTrimmed === '' ? null : bioTrimmed,
+        avatar_decoration_id: decorationToSave,
         updated_at: new Date().toISOString(),
       })
       .eq('id', user.id)
@@ -191,21 +231,15 @@ export default function SettingsForm({ user, profile }: SettingsFormProps) {
       <div>
         <label className="mb-2 block text-sm font-medium text-white/90">Profile picture</label>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full bg-white/10 ring-2 ring-white/10">
-            {displayAvatarUrl ? (
-              <Image
-                src={displayAvatarUrl}
-                alt="Profile"
-                fill
-                className="object-cover"
-                sizes="80px"
-              />
-            ) : (
-              <span className="absolute inset-0 flex items-center justify-center text-2xl font-semibold text-white/45">
-                {username?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || '?'}
-              </span>
-            )}
-          </div>
+          <AvatarWithDecoration
+            avatarUrl={displayAvatarUrl}
+            username={username || user.email || null}
+            decorationId={avatarDecorationId}
+            size={80}
+            avatarClassName="ring-2 ring-white/10"
+            fallbackTextClassName="text-2xl text-white/45"
+            alt="Profile"
+          />
           <div className="flex flex-col gap-1.5">
             <input
               ref={fileInputRef}
@@ -226,6 +260,27 @@ export default function SettingsForm({ user, profile }: SettingsFormProps) {
             <p className="text-xs text-white/45">JPEG, PNG, GIF or WebP. Max 2MB.</p>
           </div>
         </div>
+      </div>
+
+      <div>
+        <label
+          htmlFor="avatar-decoration"
+          className="mb-2 block text-sm font-medium text-white/90"
+        >
+          Avatar decoration
+        </label>
+        <AvatarDecorationDropdown
+          id="avatar-decoration"
+          value={avatarDecorationId}
+          onChange={setAvatarDecorationId}
+          avatarUrl={displayAvatarUrl}
+          username={username || user.email || null}
+          stats={decorationStats}
+        />
+        <p className="mt-1 text-xs text-white/45">
+          A small badge in the bottom-right of your avatar. Locked decorations stay greyed out
+          until you meet their requirement.
+        </p>
       </div>
 
       <div>

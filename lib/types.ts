@@ -33,6 +33,8 @@ export interface Profile {
   avatar_url: string | null
   /** Optional public bio (max length enforced in UI); requires `bio` column on profiles */
   bio?: string | null
+  /** Selected avatar decoration id; requires `avatar_decoration_id` column on profiles */
+  avatar_decoration_id?: string | null
 }
 
 export interface ProfileGarage {

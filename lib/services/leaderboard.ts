@@ -5,6 +5,7 @@ export interface LeaderboardEntry {
   user_id: string
   username: string
   avatar_url: string | null
+  avatar_decoration_id: string | null
   total_points: number
   rank: number
 }
@@ -32,7 +33,7 @@ async function getRankedLeaderboardEntries(): Promise<Omit<LeaderboardEntry, 'ra
 
   const { data: profiles, error } = await supabase
     .from('profiles')
-    .select('id, username, avatar_url')
+    .select('id, username, avatar_url, avatar_decoration_id')
     .not('username', 'is', null)
 
   if (error || !profiles?.length) {
@@ -47,6 +48,7 @@ async function getRankedLeaderboardEntries(): Promise<Omit<LeaderboardEntry, 'ra
     user_id: profile.id,
     username: profile.username || 'Unknown',
     avatar_url: profile.avatar_url,
+    avatar_decoration_id: profile.avatar_decoration_id ?? null,
     total_points: seasonPointsByUser[profile.id] ?? 0,
   }))
 

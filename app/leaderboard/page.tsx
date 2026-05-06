@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { unstable_cache } from 'next/cache'
 import Nav from '@/components/Nav'
 import GlobalLeaderboard from '@/components/GlobalLeaderboard'
 import { getPaginatedGlobalLeaderboard } from '@/lib/services/leaderboard'
@@ -15,12 +14,6 @@ export const metadata: Metadata = {
   title: 'Global Leaderboard | The Prediction Paddock',
   description: 'View the full global ranking of all Prediction Paddock players.',
 }
-
-const getCachedLeaderboardPage = unstable_cache(
-  async (page: number) => getPaginatedGlobalLeaderboard({ page, pageSize: PAGE_SIZE }),
-  ['global-leaderboard-page'],
-  { revalidate: 60 }
-)
 
 function parsePageParam(pageParam?: string) {
   const page = Number(pageParam)
@@ -39,7 +32,10 @@ function getLeaderboardPageHref(page: number) {
 export default async function LeaderboardPage({ searchParams }: PageProps) {
   const { page: pageParam } = await searchParams
   const requestedPage = parsePageParam(pageParam)
-  const leaderboard = await getCachedLeaderboardPage(requestedPage)
+  const leaderboard = await getPaginatedGlobalLeaderboard({
+    page: requestedPage,
+    pageSize: PAGE_SIZE,
+  })
   const hasMultiplePages = leaderboard.totalPages > 1
   const startRank = leaderboard.totalEntries === 0 ? 0 : (leaderboard.page - 1) * leaderboard.pageSize + 1
   const endRank = leaderboard.totalEntries === 0

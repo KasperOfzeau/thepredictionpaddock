@@ -56,7 +56,8 @@ export default async function PoolDetailPage({ params }: { params: Promise<{ id:
         id,
         username,
         full_name,
-        avatar_url
+        avatar_url,
+        avatar_decoration_id
       )
     `)
     .eq('pool_id', id)

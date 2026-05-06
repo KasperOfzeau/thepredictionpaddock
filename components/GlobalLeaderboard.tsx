@@ -1,16 +1,12 @@
-import Image from 'next/image'
 import Link from 'next/link'
 import type { LeaderboardEntry } from '@/lib/services/leaderboard'
+import AvatarWithDecoration from '@/components/AvatarWithDecoration'
 
 interface GlobalLeaderboardProps {
   entries: LeaderboardEntry[]
 }
 
 export default function GlobalLeaderboard({ entries }: GlobalLeaderboardProps) {
-  const getDisplayLetter = (username: string) => {
-    return username?.charAt(0)?.toUpperCase() || '?'
-  }
-
   return (
     <div className="flex flex-col h-full min-h-[220px] gap-2 sm:gap-3">
       {entries.length === 0 ? (
@@ -26,21 +22,14 @@ export default function GlobalLeaderboard({ entries }: GlobalLeaderboardProps) {
                 {entry.rank}
               </div>
 
-              <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden shrink-0 bg-white/10">
-                {entry.avatar_url ? (
-                  <Image
-                    src={entry.avatar_url}
-                    alt={entry.username}
-                    fill
-                    className="object-cover"
-                    sizes="48px"
-                  />
-                ) : (
-                  <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-white/60">
-                    {getDisplayLetter(entry.username)}
-                  </span>
-                )}
-              </div>
+              <AvatarWithDecoration
+                avatarUrl={entry.avatar_url}
+                username={entry.username}
+                decorationId={entry.avatar_decoration_id}
+                size={40}
+                fallbackTextClassName="text-sm text-white/60"
+                alt={entry.username}
+              />
 
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm sm:text-base truncate text-white">

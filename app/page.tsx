@@ -46,12 +46,6 @@ const getCachedLastEventForPublic = unstable_cache(
   { revalidate: 60 }
 )
 
-const getCachedGlobalLeaderboard = unstable_cache(
-  async (limit: number) => getGlobalLeaderboard(limit),
-  ['global-leaderboard'],
-  { revalidate: 60 }
-)
-
 export default async function HomePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -60,7 +54,7 @@ export default async function HomePage() {
   const nextEventPromise = getCachedNextEventForPublic()
   const latestStartedEventPromise = getCachedLatestStartedEventForPublic()
   const lastFinishedEventPromise = getCachedLastEventForPublic()
-  const leaderboardPromise = getCachedGlobalLeaderboard(5).catch((e) => {
+  const leaderboardPromise = getGlobalLeaderboard(5).catch((e) => {
     console.error('Global leaderboard:', e)
     return []
   })
