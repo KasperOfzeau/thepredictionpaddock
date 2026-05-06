@@ -12,6 +12,7 @@ import { getGlobalLeaderboardRankForUser } from '@/lib/services/leaderboard'
 import { getGarageForUser } from '@/lib/services/garage'
 import UserPredictionsList from '@/components/UserPredictionsList'
 import AvatarWithDecoration from '@/components/AvatarWithDecoration'
+import ProfileLinkBadge from '@/components/ProfileLinkBadge'
 
 interface PageProps {
   params: Promise<{ username: string }>
@@ -26,6 +27,7 @@ interface ProfilePublicRow {
   created_at: string | null
   bio: string | null
   avatar_decoration_id: string | null
+  website_url: string | null
 }
 
 const stripeOverlayStyle = {
@@ -79,6 +81,7 @@ const getProfileByUsername = cache(async (username: string) => {
         bio: typeof d.bio === 'string' ? d.bio : null,
         avatar_decoration_id:
           typeof d.avatar_decoration_id === 'string' ? d.avatar_decoration_id : null,
+        website_url: typeof d.website_url === 'string' ? d.website_url : null,
       } as ProfilePublicRow
     }
   }
@@ -231,6 +234,11 @@ export default async function ProfileByUsernamePage({ params }: PageProps) {
             ) : (
               <p className="text-sm italic text-white/45">No bio yet.</p>
             )}
+            {profile.website_url ? (
+              <div className="mt-3">
+                <ProfileLinkBadge url={profile.website_url} />
+              </div>
+            ) : null}
           </div>
         </section>
 

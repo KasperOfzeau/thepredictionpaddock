@@ -35,6 +35,8 @@ export interface Profile {
   bio?: string | null
   /** Selected avatar decoration id; requires `avatar_decoration_id` column on profiles */
   avatar_decoration_id?: string | null
+  /** Optional public profile link (Instagram, YouTube, …); requires `website_url` column on profiles */
+  website_url?: string | null
 }
 
 export interface ProfileGarage {

@@ -10,6 +10,10 @@ import {
   getAvatarDecorationById,
   type AvatarDecorationStats,
 } from '@/lib/avatarDecorations'
+import {
+  MAX_PROFILE_URL_LENGTH,
+  validateProfileUrl,
+} from '@/lib/profileLinks'
 
 const AVATAR_BUCKET = 'avatars'
 const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB (original; after compression much smaller)
@@ -40,6 +44,7 @@ interface Profile {
   avatar_url: string | null
   bio?: string | null
   avatar_decoration_id?: string | null
+  website_url?: string | null
 }
 
 interface SettingsFormProps {
@@ -59,6 +64,7 @@ export default function SettingsForm({
   const [fullName, setFullName] = useState(profile?.full_name || '')
   const [username, setUsername] = useState(profile?.username || '')
   const [bio, setBio] = useState(profile?.bio?.trim() === '' ? '' : (profile?.bio ?? ''))
+  const [websiteUrl, setWebsiteUrl] = useState(profile?.website_url ?? '')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url ?? null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [avatarDecorationId, setAvatarDecorationId] = useState<string | null>(
@@ -90,6 +96,7 @@ export default function SettingsForm({
     setUsername(profile.username || '')
     setAvatarUrl(profile.avatar_url ?? null)
     setBio(profile.bio?.trim() === '' || profile.bio == null ? '' : profile.bio)
+    setWebsiteUrl(profile.website_url ?? '')
     setAvatarDecorationId(profile.avatar_decoration_id ?? null)
   }, [profile])
 
@@ -110,6 +117,18 @@ export default function SettingsForm({
       setError(`Bio must be at most ${MAX_BIO_LENGTH} characters`)
       setLoading(false)
       return
+    }
+
+    let websiteUrlToSave: string | null = null
+    const websiteTrimmed = websiteUrl.trim()
+    if (websiteTrimmed) {
+      const result = validateProfileUrl(websiteTrimmed)
+      if (!result.ok) {
+        setError(result.error)
+        setLoading(false)
+        return
+      }
+      websiteUrlToSave = result.url
     }
 
     if (username.toLowerCase() !== profile?.username?.toLowerCase()) {
@@ -143,6 +162,7 @@ export default function SettingsForm({
         username: username.toLowerCase(),
         avatar_url: avatarUrl || null,
         bio: bioTrimmed === '' ? null : bioTrimmed,
+        website_url: websiteUrlToSave,
         avatar_decoration_id: decorationToSave,
         updated_at: new Date().toISOString(),
       })
@@ -344,6 +364,27 @@ export default function SettingsForm({
         />
         <p className="mt-1 text-xs text-white/45">
           {bio.length}/{MAX_BIO_LENGTH} characters · visible to everyone who opens your profile
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="website-url" className="mb-2 block text-sm font-medium text-white/90">
+          Profile link <span className="text-white/45">(optional)</span>
+        </label>
+        <input
+          id="website-url"
+          type="url"
+          inputMode="url"
+          autoComplete="url"
+          value={websiteUrl}
+          onChange={(e) => setWebsiteUrl(e.target.value)}
+          maxLength={MAX_PROFILE_URL_LENGTH}
+          className={inputClass}
+          placeholder="https://instagram.com/yourhandle"
+        />
+        <p className="mt-1 text-xs text-white/45">
+          Link your Instagram, YouTube, or personal site. Shown under your bio on your public
+          profile.
         </p>
       </div>
 
