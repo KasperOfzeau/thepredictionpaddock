@@ -1,26 +1,39 @@
 import type { Metadata } from 'next'
-import type { Prediction } from '@/lib/types'
+import type { Prediction, Session } from '@/lib/types'
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import GlobalLeaderboard from '@/components/GlobalLeaderboard'
-import { getNextEventForPublic, getLatestStartedEventForPublic, getLastEventForPublic, canMakePrediction, isBeforeFirstRaceWeekend } from '@/lib/services/meetings'
+import {
+  getNextEventForPublic,
+  getLatestStartedEventForPublic,
+  getLastEventForPublic,
+  canMakePredictionForPublic,
+  isBeforeFirstRaceWeekendForPublic,
+} from '@/lib/services/meetings'
 import { getGlobalLeaderboard } from '@/lib/services/leaderboard'
-import { getPointsForPrediction } from '@/lib/services/scoring'
 import PreviousRaceCard from '@/components/PreviousRaceCard'
 import HomeHero from '@/components/HomeHero'
 import SeasonPredictionsBlock from '@/components/SeasonPredictionsBlock'
-import DiscordJoinBlock from '@/components/DiscordJoinBlock'
+import InstagramFollowBlock from '@/components/InstagramFollowBlock'
 import ExpansionRoadmapBlock from '@/components/ExpansionRoadmapBlock'
 import FaqBlock from '@/components/FaqBlock'
 
-type PoolInfo = { id: string; name: string; description: string | null; created_at: string }
+type PoolMemberCount = { count: number }
+type PoolInfoWithCount = {
+  id: string
+  name: string
+  description: string | null
+  created_at: string
+  pool_members: PoolMemberCount[] | PoolMemberCount | null
+}
+type PoolInfo = Omit<PoolInfoWithCount, 'pool_members'>
 type PoolMembership = {
   id: string
   role: string
   joined_at: string
-  pools: PoolInfo | PoolInfo[] | null
+  pools: PoolInfoWithCount | PoolInfoWithCount[] | null
 }
 
 export const metadata: Metadata = {
@@ -46,18 +59,97 @@ const getCachedLastEventForPublic = unstable_cache(
   { revalidate: 60 }
 )
 
+const getCachedGlobalLeaderboard = unstable_cache(
+  async (limit: number) => {
+    try {
+      return await getGlobalLeaderboard(limit)
+    } catch (e) {
+      console.error('Global leaderboard:', e)
+      return []
+    }
+  },
+  ['home-global-leaderboard'],
+  { revalidate: 60 }
+)
+
+// Same value for every visitor; cache globally to avoid the DB+OpenF1 round-trip
+// on every page render for logged-in users. Only primitive args go into the
+// cache key so it stays stable across the API/DB shapes of Session.
+const getCachedPredictionAvailability = unstable_cache(
+  async (
+    sessionKey: number,
+    sessionName: string,
+    sessionDateStart: string,
+    sessionDateEnd: string,
+    meetingKey: number,
+  ) => {
+    try {
+      return await canMakePredictionForPublic(
+        {
+          session_key: sessionKey,
+          session_name: sessionName,
+          date_start: sessionDateStart,
+          date_end: sessionDateEnd,
+          meeting_key: meetingKey,
+        } as Session,
+        meetingKey,
+      )
+    } catch (e) {
+      console.error('Prediction availability:', e)
+      return { canPredict: false, reason: 'Availability unavailable' }
+    }
+  },
+  ['home-prediction-availability'],
+  { revalidate: 60 }
+)
+
+// Same value for every visitor; only changes when the season calendar shifts.
+const getCachedIsBeforeFirstRaceWeekend = unstable_cache(
+  async () => {
+    try {
+      return await isBeforeFirstRaceWeekendForPublic()
+    } catch (e) {
+      console.error('isBeforeFirstRaceWeekend:', e)
+      return false
+    }
+  },
+  ['home-is-before-first-race-weekend'],
+  { revalidate: 60 }
+)
+
 export default async function HomePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Fetch independent, read-heavy data in parallel.
+  // Kick off independent, read-heavy data in parallel. User-specific queries
+  // that don't depend on the resolved hero/previous event start in the same
+  // batch as the global cached fetches.
   const nextEventPromise = getCachedNextEventForPublic()
   const latestStartedEventPromise = getCachedLatestStartedEventForPublic()
   const lastFinishedEventPromise = getCachedLastEventForPublic()
-  const leaderboardPromise = getGlobalLeaderboard(5).catch((e) => {
-    console.error('Global leaderboard:', e)
-    return []
-  })
+  const leaderboardPromise = getCachedGlobalLeaderboard(5)
+  const poolMembershipsPromise = user
+    ? supabase
+      .from('pool_members')
+      .select(`
+        id,
+        role,
+        joined_at,
+        pools (
+          id,
+          name,
+          description,
+          created_at,
+          pool_members(count)
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('joined_at', { ascending: false })
+    : Promise.resolve({ data: null as PoolMembership[] | null })
+  const showSeasonPredictionsBlockPromise = user
+    ? getCachedIsBeforeFirstRaceWeekend()
+    : Promise.resolve(false)
+
   const [nextEvent, latestStartedEvent, lastFinishedEvent, leaderboard] = await Promise.all([
     nextEventPromise,
     latestStartedEventPromise,
@@ -75,101 +167,96 @@ export default async function HomePage() {
     ? latestStartedEvent
     : nextEvent ?? latestStartedEvent
 
-  let previousEvent = lastFinishedEvent
-  if (
+  // If the hero event is the same as the latest finished event, look further
+  // back so the "previous race" card doesn't duplicate the hero.
+  const previousEventPromise =
     heroEvent
-    && lastFinishedEvent
-    && heroEvent.session.session_key === lastFinishedEvent.session.session_key
-  ) {
-    previousEvent = await getCachedLastEventForPublic(heroEvent.session.date_end)
-  }
+      && lastFinishedEvent
+      && heroEvent.session.session_key === lastFinishedEvent.session.session_key
+      ? getCachedLastEventForPublic(heroEvent.session.date_end)
+      : Promise.resolve(lastFinishedEvent)
 
-  // Fetch user's pools with member count (only when logged in)
-  let poolsWithMemberCount: Array<{
-    id: string
-    role: string
-    joined_at: string
-    pools: PoolInfo
-    memberCount: number
-  }> = []
-  if (user) {
-    const { data: poolMemberships } = await supabase
-      .from('pool_members')
-      .select(`
-        id,
-        role,
-        joined_at,
-        pools (
-          id,
-          name,
-          description,
-          created_at
-        )
-      `)
-      .eq('user_id', user.id)
-      .order('joined_at', { ascending: false })
-
-    const normalizedMemberships = ((poolMemberships || []) as PoolMembership[])
-      .map((membership) => ({
-        ...membership,
-        pools: Array.isArray(membership.pools) ? membership.pools[0] : membership.pools,
-      }))
-      .filter((membership): membership is Omit<PoolMembership, 'pools'> & { pools: PoolInfo } => !!membership.pools?.id)
-
-    const poolIds = normalizedMemberships.map((membership) => membership.pools.id)
-    const { data: poolMembers } = poolIds.length > 0
-      ? await supabase
-        .from('pool_members')
-        .select('pool_id')
-        .in('pool_id', poolIds)
-      : { data: [] as Array<{ pool_id: string }> }
-
-    const memberCountByPoolId = (poolMembers || []).reduce<Record<string, number>>((acc, row) => {
-      acc[row.pool_id] = (acc[row.pool_id] ?? 0) + 1
-      return acc
-    }, {})
-
-    poolsWithMemberCount = normalizedMemberships.map((membership) => ({
-      ...membership,
-      memberCount: memberCountByPoolId[membership.pools.id] ?? 0,
-    }))
-  }
-
-  // When logged in: prediction availability and existing prediction for next race
-  let nextEventPredictionAvailability: { canPredict: boolean; reason?: string } = { canPredict: false, reason: 'No upcoming race' }
-  let nextEventHasPrediction = false
-  if (user && heroEvent) {
-    const [predictionAvailability, { data: nextPred }] = await Promise.all([
-      canMakePrediction(heroEvent.session, heroEvent.meeting.meeting_key),
-      supabase
-        .from('predictions')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('session_key', heroEvent.session.session_key)
-        .single(),
-    ])
-    nextEventPredictionAvailability = predictionAvailability
-    nextEventHasPrediction = !!nextPred
-  }
-
-  // When logged in: check if user has a prediction for the last race and get points
-  let previousPrediction: Prediction | null = null
-  let previousPoints: number | null = null
-  if (user && previousEvent) {
-    const { data } = await supabase
+  // Now that we know the hero event we can also start the per-user prediction
+  // queries in parallel with everything still in-flight above.
+  const predictionAvailabilityPromise = user && heroEvent
+    ? getCachedPredictionAvailability(
+        heroEvent.session.session_key,
+        heroEvent.session.session_name,
+        heroEvent.session.date_start,
+        heroEvent.session.date_end,
+        heroEvent.meeting.meeting_key,
+      )
+    : Promise.resolve(
+        { canPredict: false, reason: 'No upcoming race' } as { canPredict: boolean; reason?: string }
+      )
+  const nextPredictionPromise = user && heroEvent
+    ? supabase
       .from('predictions')
-      .select('*')
+      .select('id')
       .eq('user_id', user.id)
-      .eq('session_key', previousEvent.session.session_key)
-      .single()
+      .eq('session_key', heroEvent.session.session_key)
+      .maybeSingle()
+    : Promise.resolve({ data: null as { id: string } | null })
 
-    previousPrediction = data ?? null
-    previousPoints = await getPointsForPrediction(previousPrediction, previousEvent.session.session_key)
-  }
+  // Trust `prediction.points` from the DB – it is kept fresh by the cached
+  // global leaderboard, which refreshes every user's race points on its
+  // 60-second cycle via getOrComputeSeasonPointsForUsers. So we only need a
+  // single read here, no extra OpenF1 round-trip.
+  const previousPredictionPromise: Promise<Prediction | null> = user
+    ? previousEventPromise.then(async (event) => {
+        if (!event) return null
+        const { data } = await supabase
+          .from('predictions')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('session_key', event.session.session_key)
+          .maybeSingle<Prediction>()
+        return data ?? null
+      })
+    : Promise.resolve(null)
 
-  // Season predictions block: alleen tonen voor ingelogde gebruikers vóór eerste raceweekend
-  // Not cached: isBeforeFirstRaceWeekend uses Supabase server client (cookies)
-  const showSeasonPredictionsBlock = user ? await isBeforeFirstRaceWeekend() : false
+  const [
+    previousEvent,
+    nextEventPredictionAvailability,
+    nextPredictionResult,
+    previousPrediction,
+    poolMembershipsResult,
+    showSeasonPredictionsBlock,
+  ] = await Promise.all([
+    previousEventPromise,
+    predictionAvailabilityPromise,
+    nextPredictionPromise,
+    previousPredictionPromise,
+    poolMembershipsPromise,
+    showSeasonPredictionsBlockPromise,
+  ])
+
+  const nextEventHasPrediction = !!nextPredictionResult.data
+  const previousPoints = previousPrediction?.points ?? null
+
+  // Normalize the combined pool query (Supabase nests relations as arrays
+  // depending on cardinality, so flatten consistently).
+  const poolsWithMemberCount = ((poolMembershipsResult.data || []) as PoolMembership[])
+    .flatMap((membership) => {
+      const poolWithCount = Array.isArray(membership.pools) ? membership.pools[0] : membership.pools
+      if (!poolWithCount?.id) return []
+      const countRow = Array.isArray(poolWithCount.pool_members)
+        ? poolWithCount.pool_members[0]
+        : poolWithCount.pool_members
+      const pool: PoolInfo = {
+        id: poolWithCount.id,
+        name: poolWithCount.name,
+        description: poolWithCount.description,
+        created_at: poolWithCount.created_at,
+      }
+      return [{
+        id: membership.id,
+        role: membership.role,
+        joined_at: membership.joined_at,
+        pools: pool,
+        memberCount: countRow?.count ?? 0,
+      }]
+    })
 
   return (
     <div className="min-h-112 sm:min-h-128 md:min-h-144 bg-carbon-black">
@@ -188,7 +275,7 @@ export default async function HomePage() {
             {showSeasonPredictionsBlock && (
               <SeasonPredictionsBlock show={true} />
             )}
-            <DiscordJoinBlock />
+            <InstagramFollowBlock />
           </section>
 
           <section className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-7xl mx-auto px-6 pt-6 pb-6">

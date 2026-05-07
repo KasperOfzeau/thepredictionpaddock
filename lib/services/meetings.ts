@@ -393,6 +393,23 @@ export async function getAllMeetings(year: number): Promise<Meeting[]> {
  */
 export async function isBeforeFirstRaceWeekend(year?: number): Promise<boolean> {
   const supabase = await createClient()
+  return isBeforeFirstRaceWeekendWithClient(supabase, year)
+}
+
+/**
+ * Same as {@link isBeforeFirstRaceWeekend} but uses the admin client so it can
+ * be invoked from `unstable_cache` (which has no access to cookies/RLS).
+ * Result is identical for every visitor; safe to cache globally.
+ */
+export async function isBeforeFirstRaceWeekendForPublic(year?: number): Promise<boolean> {
+  const supabase = createAdminClient()
+  return isBeforeFirstRaceWeekendWithClient(supabase, year)
+}
+
+async function isBeforeFirstRaceWeekendWithClient(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  year?: number
+): Promise<boolean> {
   const currentYear = year ?? new Date().getFullYear()
   const now = new Date()
 
@@ -423,6 +440,28 @@ export async function canMakePrediction(
   meetingKey: number
 ): Promise<PredictionAvailability> {
   const supabase = await createClient()
+  return canMakePredictionWithClient(supabase, session, meetingKey)
+}
+
+/**
+ * Same as {@link canMakePrediction} but uses the admin client so it can be
+ * invoked from `unstable_cache`. The result depends only on the session and
+ * upstream OpenF1 grid data – it is identical for every visitor and therefore
+ * safe to cache globally.
+ */
+export async function canMakePredictionForPublic(
+  session: Session,
+  meetingKey: number
+): Promise<PredictionAvailability> {
+  const supabase = createAdminClient()
+  return canMakePredictionWithClient(supabase, session, meetingKey)
+}
+
+async function canMakePredictionWithClient(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  session: Session,
+  meetingKey: number
+): Promise<PredictionAvailability> {
   const now = new Date()
   const raceStart = new Date(session.date_start)
 
@@ -433,7 +472,7 @@ export async function canMakePrediction(
   const qualifyingName = session.session_name === 'Sprint' ? 'Sprint Qualifying' : 'Qualifying'
   const { data: qualifyingSession } = await supabase
     .from('sessions')
-    .select('*')
+    .select('session_key')
     .eq('meeting_key', meetingKey)
     .eq('session_name', qualifyingName)
     .single()
