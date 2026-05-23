@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToUser } from '@/lib/services/pushNotifications'
 
+const MINUTE_MS = 60 * 1000
 const HOUR_MS = 60 * 60 * 1000
 const NOTIFICATION_TYPE = 'race_reminder' as const
+const PREDICTION_REMINDER_MIN_MS = 3 * HOUR_MS
+const PREDICTION_REMINDER_MAX_MS = 4 * HOUR_MS
+const START_REMINDER_MIN_MS = 45 * MINUTE_MS
+const START_REMINDER_MAX_MS = 75 * MINUTE_MS
 
 type NotificationKind = 'prediction_reminder' | 'race_start'
 
@@ -37,17 +42,37 @@ function getWindow(now: Date, fromHours: number, toHours: number) {
   }
 }
 
+function getMillisecondsUntilStart(session: SessionRow, now: Date) {
+  const startTime = new Date(session.date_start).getTime()
+  if (Number.isNaN(startTime)) return null
+  return startTime - now.getTime()
+}
+
+function isSessionWithinLeadTime(
+  session: SessionRow,
+  now: Date,
+  minLeadMs: number,
+  maxLeadMs: number
+) {
+  const millisecondsUntilStart = getMillisecondsUntilStart(session, now)
+  return (
+    millisecondsUntilStart !== null
+    && millisecondsUntilStart >= minLeadMs
+    && millisecondsUntilStart <= maxLeadMs
+  )
+}
+
 function getStartNotificationCopy(session: SessionRow, grandPrixLabel: string) {
   if (session.session_name === 'Sprint') {
     return {
       title: 'Sprint starts soon!',
-      body: `The ${grandPrixLabel} Sprint starts in about 1 hour.`,
+      body: `The ${grandPrixLabel} Sprint is coming up soon.`,
     }
   }
 
   return {
     title: 'Race starts soon!',
-    body: `The ${grandPrixLabel} starts in about 1 hour.`,
+    body: `The ${grandPrixLabel} is coming up soon.`,
   }
 }
 
@@ -145,7 +170,7 @@ export async function GET(request: NextRequest) {
   const supabase = createAdminClient()
   const now = new Date()
   const predictionWindow = getWindow(now, 3, 4)
-  const raceWindow = getWindow(now, 0, 1)
+  const raceWindow = getWindow(now, 0, 2)
 
   const [
     subscribedUserIds,
@@ -174,7 +199,26 @@ export async function GET(request: NextRequest) {
   let predictionRemindersSent = 0
   let raceStartNotificationsSent = 0
 
-  for (const session of (predictionSessions ?? []) as SessionRow[]) {
+  const upcomingPredictionSessions = ((predictionSessions ?? []) as SessionRow[])
+    .filter((session) =>
+      isSessionWithinLeadTime(
+        session,
+        now,
+        PREDICTION_REMINDER_MIN_MS,
+        PREDICTION_REMINDER_MAX_MS
+      )
+    )
+  const upcomingRaceSessions = ((raceSessions ?? []) as SessionRow[])
+    .filter((session) =>
+      isSessionWithinLeadTime(
+        session,
+        now,
+        START_REMINDER_MIN_MS,
+        START_REMINDER_MAX_MS
+      )
+    )
+
+  for (const session of upcomingPredictionSessions) {
     const grandPrixLabel = await getSessionGrandPrixLabel(supabase, session)
 
     const { data: existingPredictions } = await supabase
@@ -197,7 +241,7 @@ export async function GET(request: NextRequest) {
       .map((userId) => ({
         userId,
         title: 'Prediction reminder',
-        body: `Don't forget to submit your ${session.session_name} prediction for the ${grandPrixLabel}. It starts in about 4 hours.`,
+        body: `Don't forget to submit your ${session.session_name} prediction for the ${grandPrixLabel} before it starts.`,
         url: '/predictions/race',
         metadata: {
           kind: 'prediction_reminder' as const,
@@ -210,7 +254,7 @@ export async function GET(request: NextRequest) {
     predictionRemindersSent += await sendPreparedNotifications(supabase, notifications)
   }
 
-  for (const session of (raceSessions ?? []) as SessionRow[]) {
+  for (const session of upcomingRaceSessions) {
     const grandPrixLabel = await getSessionGrandPrixLabel(supabase, session)
     const notificationCopy = getStartNotificationCopy(session, grandPrixLabel)
     const alreadyNotifiedUserIds = await getAlreadyNotifiedUserIds(
@@ -251,6 +295,16 @@ export async function GET(request: NextRequest) {
       raceStart: {
         from: raceWindow.from.toISOString(),
         to: raceWindow.to.toISOString(),
+      },
+    },
+    leadTimeFilters: {
+      predictionReminder: {
+        minMinutes: PREDICTION_REMINDER_MIN_MS / MINUTE_MS,
+        maxMinutes: PREDICTION_REMINDER_MAX_MS / MINUTE_MS,
+      },
+      raceStart: {
+        minMinutes: START_REMINDER_MIN_MS / MINUTE_MS,
+        maxMinutes: START_REMINDER_MAX_MS / MINUTE_MS,
       },
     },
   })
