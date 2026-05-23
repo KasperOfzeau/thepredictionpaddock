@@ -37,6 +37,20 @@ function getWindow(now: Date, fromHours: number, toHours: number) {
   }
 }
 
+function getStartNotificationCopy(session: SessionRow, grandPrixLabel: string) {
+  if (session.session_name === 'Sprint') {
+    return {
+      title: 'Sprint starts soon!',
+      body: `The ${grandPrixLabel} Sprint starts in about 1 hour.`,
+    }
+  }
+
+  return {
+    title: 'Race starts soon!',
+    body: `The ${grandPrixLabel} starts in about 1 hour.`,
+  }
+}
+
 async function getSubscribedUserIds(supabase: ReturnType<typeof createAdminClient>) {
   const { data: subscribedUsers } = await supabase
     .from('push_subscriptions')
@@ -130,8 +144,8 @@ export async function GET(request: NextRequest) {
 
   const supabase = createAdminClient()
   const now = new Date()
-  const predictionWindow = getWindow(now, 4, 5)
-  const raceWindow = getWindow(now, 1, 2)
+  const predictionWindow = getWindow(now, 3, 4)
+  const raceWindow = getWindow(now, 0, 1)
 
   const [
     subscribedUserIds,
@@ -148,7 +162,7 @@ export async function GET(request: NextRequest) {
     supabase
       .from('sessions')
       .select('session_key, session_name, meeting_key, location, date_start')
-      .eq('session_name', 'Race')
+      .in('session_name', ['Race', 'Sprint'])
       .gte('date_start', raceWindow.from.toISOString())
       .lte('date_start', raceWindow.to.toISOString()),
   ])
@@ -198,6 +212,7 @@ export async function GET(request: NextRequest) {
 
   for (const session of (raceSessions ?? []) as SessionRow[]) {
     const grandPrixLabel = await getSessionGrandPrixLabel(supabase, session)
+    const notificationCopy = getStartNotificationCopy(session, grandPrixLabel)
     const alreadyNotifiedUserIds = await getAlreadyNotifiedUserIds(
       supabase,
       subscribedUserIds,
@@ -209,8 +224,8 @@ export async function GET(request: NextRequest) {
       .filter((userId) => !alreadyNotifiedUserIds.has(userId))
       .map((userId) => ({
         userId,
-        title: 'Race starts soon!',
-        body: `The ${grandPrixLabel} starts in about 1 hour.`,
+        title: notificationCopy.title,
+        body: notificationCopy.body,
         url: '/',
         metadata: {
           kind: 'race_start' as const,
