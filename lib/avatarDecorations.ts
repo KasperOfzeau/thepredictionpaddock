@@ -13,7 +13,14 @@
  * 'manual'` and rely on `stats.manualGrants` in `isUnlocked`.
  */
 
-export type AvatarDecorationId = 'ferrari-red' | 'mclaren-papaya' | 'larslaars'
+export type AvatarDecorationId =
+  | 'ferrari-red'
+  | 'mercedes-teal'
+  | 'red-bull-navy'
+  | 'alpine-pink'
+  | 'williams-royal'
+  | 'mclaren-papaya'
+  | 'larslaars'
 
 /** Stats used to evaluate which decorations a user has unlocked. */
 export interface AvatarDecorationStats {
@@ -63,6 +70,50 @@ export const AVATAR_DECORATIONS: readonly AvatarDecoration[] = [
     unlockLabel: 'after your first prediction',
     isUnlocked: (stats) =>
       stats.predictionCount >= 1 || stats.manualGrants.has('ferrari-red'),
+  },
+  {
+    id: 'mercedes-teal',
+    label: 'Mercedes Teal',
+    color: '#00A19C',
+    logoSrc: '/avatar-decorations/mercedes-teal.png',
+    unlockKind: 'auto',
+    unlockLabel: 'after your first prediction',
+    logoInset: 0.12,
+    isUnlocked: (stats) =>
+      stats.predictionCount >= 1 || stats.manualGrants.has('mercedes-teal'),
+  },
+  {
+    id: 'red-bull-navy',
+    label: 'Red Bull Navy',
+    color: '#002740',
+    logoSrc: '/avatar-decorations/red-bull-navy.svg',
+    unlockKind: 'auto',
+    unlockLabel: 'after 2 predictions',
+    logoInset: 0.12,
+    isUnlocked: (stats) =>
+      stats.predictionCount >= 2 || stats.manualGrants.has('red-bull-navy'),
+  },
+  {
+    id: 'alpine-pink',
+    label: 'Alpine Pink',
+    color: '#EF95CF',
+    logoSrc: '/avatar-decorations/alpine-pink.png',
+    unlockKind: 'auto',
+    unlockLabel: 'after 3 predictions',
+    logoInset: 0.12,
+    isUnlocked: (stats) =>
+      stats.predictionCount >= 3 || stats.manualGrants.has('alpine-pink'),
+  },
+  {
+    id: 'williams-royal',
+    label: 'Williams Royal',
+    color: '#041E42',
+    logoSrc: '/avatar-decorations/williams-royal.png',
+    unlockKind: 'auto',
+    unlockLabel: 'after 5 predictions',
+    logoInset: 0.12,
+    isUnlocked: (stats) =>
+      stats.predictionCount >= 5 || stats.manualGrants.has('williams-royal'),
   },
   {
     id: 'mclaren-papaya',
