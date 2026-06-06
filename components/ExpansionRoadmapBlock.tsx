@@ -1,6 +1,6 @@
 const items = [
+  'Qualifying results in prediction page',
   'Achievements',
-  'Push notifications',
   'Qualifying predictions',
   'Profile customisation',
 ]
