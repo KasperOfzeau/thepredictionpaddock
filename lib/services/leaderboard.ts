@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrComputeSeasonPointsForUsers } from '@/lib/services/seasonScores'
 
@@ -64,13 +65,29 @@ async function getRankedLeaderboardEntries(): Promise<Omit<LeaderboardEntry, 'ra
 }
 
 /**
+ * Cached ranking used by every leaderboard consumer (home top-N, the full
+ * `/leaderboard` page, and per-profile rank lookups).
+ *
+ * `getRankedLeaderboardEntries` is expensive: it recomputes season points for
+ * every user, which refreshes race results from OpenF1 and writes back to the
+ * database. Without this cache each profile/leaderboard request would repeat
+ * that full pass. Sharing a single 60s cache caps it to one recompute per
+ * minute across the whole app.
+ */
+const getCachedRankedLeaderboardEntries = unstable_cache(
+  getRankedLeaderboardEntries,
+  ['ranked-leaderboard-entries', String(CURRENT_YEAR)],
+  { revalidate: 60, tags: ['global-leaderboard'] }
+)
+
+/**
  * Global rank and season points for a single user (current year leaderboard ordering).
  * Returns null if the user has no username on their profile (excluded from ranking).
  */
 export async function getGlobalLeaderboardRankForUser(
   userId: string
 ): Promise<{ rank: number; total_points: number } | null> {
-  const rankedEntries = await getRankedLeaderboardEntries()
+  const rankedEntries = await getCachedRankedLeaderboardEntries()
   const idx = rankedEntries.findIndex((e) => e.user_id === userId)
   if (idx === -1) return null
   return { rank: idx + 1, total_points: rankedEntries[idx].total_points }
@@ -96,7 +113,7 @@ export async function getPaginatedGlobalLeaderboard({
 } = {}): Promise<PaginatedLeaderboardResult> {
   const normalizedPageSize = normalizePositiveInteger(pageSize, 25)
   const normalizedRequestedPage = normalizePositiveInteger(page, 1)
-  const rankedEntries = await getRankedLeaderboardEntries()
+  const rankedEntries = await getCachedRankedLeaderboardEntries()
   const totalEntries = rankedEntries.length
   const totalPages = Math.max(1, Math.ceil(totalEntries / normalizedPageSize))
   const currentPage = Math.min(normalizedRequestedPage, totalPages)
