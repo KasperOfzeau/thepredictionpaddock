@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Footer from "@/components/Footer";
+import ReferralHandler from "@/components/ReferralHandler";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,6 +26,7 @@ export default function RootLayout({
         <link rel="manifest" href="/site.webmanifest" />
       </head>
       <body className="flex min-h-screen flex-col antialiased">
+        <ReferralHandler />
         <main className="flex-1">{children}</main>
         <Footer />
       </body>
