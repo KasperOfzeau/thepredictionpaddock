@@ -104,6 +104,73 @@ export async function getGlobalLeaderboard(limit: number = 5): Promise<Leaderboa
   return entries
 }
 
+export interface TopPredictor {
+  user_id: string
+  username: string
+  avatar_url: string | null
+  avatar_decoration_id: string | null
+  points: number
+}
+
+/**
+ * Top predictors for a single race session, ranked by the points earned on that
+ * race's prediction (highest first, earliest submission wins ties).
+ *
+ * Trusts the `points` column on `predictions`, which is kept fresh by the cached
+ * global leaderboard's periodic recompute (same source the home page already
+ * uses for its "previous event" points), so this stays a cheap read.
+ * Uses the admin client so it can be shown on the public home page (no RLS block).
+ */
+export async function getTopPredictionsForSession(
+  sessionKey: number,
+  limit: number = 3
+): Promise<TopPredictor[]> {
+  const normalizedLimit = normalizePositiveInteger(limit, 3)
+  const supabase = createAdminClient()
+
+  // Over-fetch a little so profiles without a username can be filtered out
+  // while still returning a full podium.
+  const { data: predictions, error } = await supabase
+    .from('predictions')
+    .select('user_id, points, updated_at')
+    .eq('session_key', sessionKey)
+    .not('points', 'is', null)
+    .order('points', { ascending: false })
+    .order('updated_at', { ascending: true })
+    .limit(normalizedLimit + 5)
+
+  if (error || !predictions?.length) {
+    if (error) console.error('Error fetching top predictions:', error)
+    return []
+  }
+
+  const userIds = predictions.map((prediction) => prediction.user_id)
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, avatar_url, avatar_decoration_id')
+    .in('id', userIds)
+
+  const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]))
+
+  const ranked: TopPredictor[] = []
+  for (const prediction of predictions) {
+    const profile = profileById.get(prediction.user_id)
+    if (!profile?.username) continue
+
+    ranked.push({
+      user_id: prediction.user_id,
+      username: profile.username,
+      avatar_url: profile.avatar_url ?? null,
+      avatar_decoration_id: profile.avatar_decoration_id ?? null,
+      points: prediction.points as number,
+    })
+
+    if (ranked.length >= normalizedLimit) break
+  }
+
+  return ranked
+}
+
 export async function getPaginatedGlobalLeaderboard({
   page = 1,
   pageSize = 25,

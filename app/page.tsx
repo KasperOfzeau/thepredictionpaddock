@@ -12,7 +12,7 @@ import {
   canMakePredictionForPublic,
   isBeforeFirstRaceWeekendForPublic,
 } from '@/lib/services/meetings'
-import { getGlobalLeaderboard } from '@/lib/services/leaderboard'
+import { getGlobalLeaderboard, getTopPredictionsForSession } from '@/lib/services/leaderboard'
 import PreviousRaceCard from '@/components/PreviousRaceCard'
 import HomeHero from '@/components/HomeHero'
 import SeasonPredictionsBlock from '@/components/SeasonPredictionsBlock'
@@ -56,6 +56,19 @@ const getCachedLatestStartedEventForPublic = unstable_cache(
 const getCachedLastEventForPublic = unstable_cache(
   async (before?: string) => getLastEventForPublic(before),
   ['home-last-event-public'],
+  { revalidate: 60 }
+)
+
+const getCachedTopPredictionsForSession = unstable_cache(
+  async (sessionKey: number) => {
+    try {
+      return await getTopPredictionsForSession(sessionKey, 3)
+    } catch (e) {
+      console.error('Top predictions for session:', e)
+      return []
+    }
+  },
+  ['home-top-predictions-for-session'],
   { revalidate: 60 }
 )
 
@@ -215,11 +228,16 @@ export default async function HomePage() {
       })
     : Promise.resolve(null)
 
+  const topPreviousPredictionsPromise = previousEventPromise.then((event) =>
+    event ? getCachedTopPredictionsForSession(event.session.session_key) : []
+  )
+
   const [
     previousEvent,
     nextEventPredictionAvailability,
     nextPredictionResult,
     previousPrediction,
+    topPreviousPredictions,
     poolMembershipsResult,
     showSeasonPredictionsBlock,
   ] = await Promise.all([
@@ -227,6 +245,7 @@ export default async function HomePage() {
     predictionAvailabilityPromise,
     nextPredictionPromise,
     previousPredictionPromise,
+    topPreviousPredictionsPromise,
     poolMembershipsPromise,
     showSeasonPredictionsBlockPromise,
   ])
@@ -380,6 +399,7 @@ export default async function HomePage() {
               hasPrediction={!!previousPrediction}
               points={previousPoints}
               isLoggedIn={!!user}
+              topPredictors={topPreviousPredictions}
             />
           </section>
 
