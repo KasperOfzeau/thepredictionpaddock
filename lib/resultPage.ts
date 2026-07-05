@@ -12,3 +12,9 @@ export function getResultPageHref(
   const searchParams = new URLSearchParams({ user: normalizedUsername })
   return `/results/${sessionKey}?${searchParams.toString()}`
 }
+
+export function getAllResultPageHref(sessionKey: number | null): string {
+  if (sessionKey == null) return '#'
+
+  return `/results/${sessionKey}/all`
+}

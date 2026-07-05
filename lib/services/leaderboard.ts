@@ -112,6 +112,15 @@ export interface TopPredictor {
   points: number
 }
 
+export interface SessionPredictionResult {
+  user_id: string
+  username: string
+  avatar_url: string | null
+  avatar_decoration_id: string | null
+  points: number | null
+  rank: number
+}
+
 /**
  * Top predictors for a single race session, ranked by the points earned on that
  * race's prediction (highest first, earliest submission wins ties).
@@ -169,6 +178,56 @@ export async function getTopPredictionsForSession(
   }
 
   return ranked
+}
+
+/**
+ * All public prediction results for a single session, ranked by points.
+ * Uses the persisted `points` column, kept fresh by the same scoring flow as the
+ * home page podium and global leaderboard.
+ */
+export async function getPredictionResultsForSession(
+  sessionKey: number
+): Promise<SessionPredictionResult[]> {
+  const supabase = createAdminClient()
+
+  const { data: predictions, error } = await supabase
+    .from('predictions')
+    .select('user_id, points, updated_at')
+    .eq('session_key', sessionKey)
+    .order('points', { ascending: false, nullsFirst: false })
+    .order('updated_at', { ascending: true })
+
+  if (error || !predictions?.length) {
+    if (error) console.error('Error fetching session prediction results:', error)
+    return []
+  }
+
+  const userIds = predictions.map((prediction) => prediction.user_id)
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, avatar_url, avatar_decoration_id')
+    .in('id', userIds)
+
+  const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]))
+  const results: Omit<SessionPredictionResult, 'rank'>[] = []
+
+  for (const prediction of predictions) {
+    const profile = profileById.get(prediction.user_id)
+    if (!profile?.username) continue
+
+    results.push({
+      user_id: prediction.user_id,
+      username: profile.username,
+      avatar_url: profile.avatar_url ?? null,
+      avatar_decoration_id: profile.avatar_decoration_id ?? null,
+      points: prediction.points as number | null,
+    })
+  }
+
+  return results.map((result, index) => ({
+    ...result,
+    rank: index + 1,
+  }))
 }
 
 export async function getPaginatedGlobalLeaderboard({

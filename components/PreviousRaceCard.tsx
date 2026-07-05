@@ -2,7 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import type { NextEvent } from '@/lib/types'
 import type { TopPredictor } from '@/lib/services/leaderboard'
-import { getResultPageHref } from '@/lib/resultPage'
+import { getAllResultPageHref, getResultPageHref } from '@/lib/resultPage'
 import AvatarWithDecoration from '@/components/AvatarWithDecoration'
 
 function getCircuitImageSrc(circuitShortName: string): string {
@@ -127,12 +127,18 @@ export default function PreviousRaceCard({
                   href={getResultPageHref(lastEvent.session.session_key)}
                   className="px-5 py-2 rounded-full font-medium transition-colors border-2 border-f1-red text-white hover:bg-f1-red/20 cursor-pointer"
                 >
-                  View result
+                  View my results
                 </Link>
               </>
             ) : (
               <p className="text-white/50 text-sm">{noPredictionLabel}</p>
             )}
+            <Link
+              href={getAllResultPageHref(lastEvent.session.session_key)}
+              className="px-5 py-2 rounded-full font-medium transition-colors border border-white/20 text-white hover:bg-white/10 cursor-pointer"
+            >
+              View all results
+            </Link>
           </div>
         )}
       </div>
