@@ -59,6 +59,18 @@ export default function UserPredictionsList({
   const pointsClassName = theme === 'dark'
     ? 'text-sm font-semibold text-white'
     : 'text-sm font-semibold text-carbon-black'
+  const badgeBaseClassName =
+    'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]'
+  const getBadgeClassName = (isSprint: boolean) => {
+    if (theme === 'dark') {
+      return isSprint
+        ? `${badgeBaseClassName} bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/40`
+        : `${badgeBaseClassName} bg-f1-red/25 text-white ring-1 ring-f1-red/50`
+    }
+    return isSprint
+      ? `${badgeBaseClassName} bg-amber-100 text-amber-700 ring-1 ring-amber-300`
+      : `${badgeBaseClassName} bg-f1-red/10 text-f1-red ring-1 ring-f1-red/30`
+  }
 
   return (
     <>
@@ -93,7 +105,7 @@ export default function UserPredictionsList({
             month: 'short',
             year: 'numeric',
           })
-          const sessionLabel = item.sessionName ?? 'Race'
+          const isSprint = item.sessionName === 'Sprint'
           const href = getResultPageHref(
             item.sessionKey,
             !isOwnProfile ? sharerName : null
@@ -105,11 +117,16 @@ export default function UserPredictionsList({
                 className={itemClassName}
               >
                 <div className="min-w-0">
-                  <p className={titleClassName}>
-                    {item.meetingName}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className={titleClassName}>
+                      {item.meetingName}
+                    </p>
+                    <span className={getBadgeClassName(isSprint)}>
+                      {isSprint ? 'Sprint' : 'Race'}
+                    </span>
+                  </div>
                   <p className={metaClassName}>
-                    {sessionLabel} · {dateLabel}
+                    {dateLabel}
                   </p>
                 </div>
                 <div className="shrink-0 flex items-center gap-2">
