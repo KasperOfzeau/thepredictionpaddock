@@ -115,12 +115,19 @@ export default async function RacePredictionPage() {
     console.error('Error fetching constructor standings:', error)
   }
 
-  const { data: existingPrediction } = await supabase
-    .from('predictions')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('session_key', session.session_key)
-    .maybeSingle()
+  const [{ data: existingPrediction }, { data: profile }] = await Promise.all([
+    supabase
+      .from('predictions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('session_key', session.session_key)
+      .maybeSingle(),
+    supabase
+      .from('profiles')
+      .select('username, avatar_url')
+      .eq('id', user.id)
+      .maybeSingle(),
+  ])
 
   return (
     <div className="bg-carbon-black flex flex-col">
@@ -131,6 +138,8 @@ export default async function RacePredictionPage() {
         session={session}
         existingPrediction={existingPrediction}
         constructorStandingsOrder={constructorStandingsOrder}
+        sharerName={profile?.username ?? null}
+        sharerAvatarUrl={profile?.avatar_url ?? null}
       />
     </div>
   )
