@@ -94,7 +94,9 @@ export default function UserPredictionsList({
                     {seasonPrediction.points} pts
                   </span>
                 )}
-                <span className="text-sm text-f1-red font-medium">View</span>
+                <svg className="h-4 w-4 text-f1-red" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
               </div>
             </button>
           </li>
@@ -117,13 +119,13 @@ export default function UserPredictionsList({
                 className={itemClassName}
               >
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className={titleClassName}>
-                      {item.meetingName}
-                    </p>
-                    <span className={getBadgeClassName(isSprint)}>
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+                    <span className={`${getBadgeClassName(isSprint)} order-1 self-start sm:order-2 sm:self-auto`}>
                       {isSprint ? 'Sprint' : 'Race'}
                     </span>
+                    <p className={`${titleClassName} order-2 sm:order-1`}>
+                      {item.meetingName}
+                    </p>
                   </div>
                   <p className={metaClassName}>
                     {dateLabel}
@@ -135,7 +137,9 @@ export default function UserPredictionsList({
                       {item.points} pts
                     </span>
                   )}
-                  <span className="text-sm text-f1-red font-medium">View</span>
+                  <svg className="h-4 w-4 text-f1-red" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
                 </div>
               </Link>
             </li>
