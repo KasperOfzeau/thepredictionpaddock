@@ -4,7 +4,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { createClient } from '@/lib/supabase/server'
 import { getNextEvent, canMakePrediction, hasQualifyingHappened } from '@/lib/services/meetings'
-import { getDriverRosterForUpcomingMeeting } from '@/lib/services/predictions'
+import { getDriverRosterForUpcomingMeeting } from '@/lib/services/predictions.server'
 import StartingGridPrediction from '@/components/StartingGridPrediction'
 
 function normalizeTeamName(name: string): string {

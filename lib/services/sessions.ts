@@ -1,11 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
+import { openf1Fetch } from '@/lib/services/openf1'
 import type { Session } from '@/lib/types'
 
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
 
-const F1_API_URL = 'https://api.openf1.org/v1'
 const OPENF1_FETCH_OPTIONS = { next: { revalidate: 60 } } as const
 
 const RACE_OR_SPRINT_NAMES = ['Race', 'Sprint'] as const
@@ -139,7 +139,7 @@ export async function syncSessionsForMeeting(
   supabase: Awaited<ReturnType<typeof createClient>>,
   meetingKey: number
 ): Promise<void> {
-  const res = await fetch(`${F1_API_URL}/sessions?meeting_key=${meetingKey}`, OPENF1_FETCH_OPTIONS)
+  const res = await openf1Fetch(`/sessions?meeting_key=${meetingKey}`, OPENF1_FETCH_OPTIONS)
   if (!res.ok) {
     if (res.status === 401) {
       console.warn(

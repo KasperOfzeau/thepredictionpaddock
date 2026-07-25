@@ -8,13 +8,13 @@ import {
   getNextRaceOrSprintForMeeting,
   syncSessionsForMeeting,
 } from '@/lib/services/sessions'
-import { getDriverRosterForUpcomingMeeting } from '@/lib/services/predictions'
+import { getDriverRosterForUpcomingMeeting } from '@/lib/services/predictions.server'
+import { openf1Fetch } from '@/lib/services/openf1'
 
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
 
-const F1_API_URL = 'https://api.openf1.org/v1'
 const OPENF1_FETCH_OPTIONS = { next: { revalidate: 60 } } as const
 
 // -----------------------------------------------------------------------------
@@ -31,8 +31,8 @@ export async function getNextEventFromApi(): Promise<NextEvent | null> {
   const now = new Date().toISOString()
 
   const [meetingsRes, sessionsRes] = await Promise.all([
-    fetch(`${F1_API_URL}/meetings?year=${currentYear}`, OPENF1_FETCH_OPTIONS),
-    fetch(`${F1_API_URL}/sessions?year=${currentYear}`, OPENF1_FETCH_OPTIONS),
+    openf1Fetch(`/meetings?year=${currentYear}`, OPENF1_FETCH_OPTIONS),
+    openf1Fetch(`/sessions?year=${currentYear}`, OPENF1_FETCH_OPTIONS),
   ])
   if (!meetingsRes.ok || !sessionsRes.ok) return null
 
@@ -132,8 +132,8 @@ export async function getLastEventFromApi(): Promise<NextEvent | null> {
   const now = new Date().toISOString()
 
   const [resCurrent, resPrevious] = await Promise.all([
-    fetch(`${F1_API_URL}/meetings?year=${currentYear}`, OPENF1_FETCH_OPTIONS),
-    fetch(`${F1_API_URL}/meetings?year=${currentYear - 1}`, OPENF1_FETCH_OPTIONS),
+    openf1Fetch(`/meetings?year=${currentYear}`, OPENF1_FETCH_OPTIONS),
+    openf1Fetch(`/meetings?year=${currentYear - 1}`, OPENF1_FETCH_OPTIONS),
   ])
 
   const parseMeetings = async (res: Response): Promise<ApiMeeting[]> => {
@@ -157,8 +157,8 @@ export async function getLastEventFromApi(): Promise<NextEvent | null> {
   )
 
   for (const meetingApi of sortedMeetings) {
-    const sessionsRes = await fetch(
-      `${F1_API_URL}/sessions?meeting_key=${meetingApi.meeting_key}`,
+    const sessionsRes = await openf1Fetch(
+      `/sessions?meeting_key=${meetingApi.meeting_key}`,
       OPENF1_FETCH_OPTIONS
     )
     if (!sessionsRes.ok) continue
@@ -587,7 +587,7 @@ async function syncAllMeetings(
   supabase: Awaited<ReturnType<typeof createClient>>,
   year: number
 ): Promise<void> {
-  const res = await fetch(`${F1_API_URL}/meetings?year=${year}`, OPENF1_FETCH_OPTIONS)
+  const res = await openf1Fetch(`/meetings?year=${year}`, OPENF1_FETCH_OPTIONS)
   if (!res.ok) {
     if (res.status === 401) {
       console.warn(

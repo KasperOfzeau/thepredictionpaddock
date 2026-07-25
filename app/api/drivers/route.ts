@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { openf1Fetch } from '@/lib/services/openf1'
 import type { Driver } from '@/lib/types'
 
-const F1_API_URL = 'https://api.openf1.org/v1'
 export const revalidate = 60
 
 /**
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       }
 
       const key = parseInt(sessionKey, 10)
-      apiUrl = `${F1_API_URL}/drivers?session_key=${key}`
+      apiUrl = `/drivers?session_key=${key}`
     } else {
       if (!(meetingKey === 'latest' || /^\d+$/.test(meetingKey!))) {
         return NextResponse.json(
@@ -47,10 +47,10 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      apiUrl = `${F1_API_URL}/drivers?meeting_key=${meetingKey}`
+      apiUrl = `/drivers?meeting_key=${meetingKey}`
     }
 
-    const res = await fetch(apiUrl, {
+    const res = await openf1Fetch(apiUrl, {
       next: { revalidate },
     })
     if (!res.ok) {

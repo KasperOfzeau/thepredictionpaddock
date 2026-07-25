@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
+import { openf1Fetch } from '@/lib/services/openf1'
 import type { Prediction } from '@/lib/types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-const F1_API_URL = 'https://api.openf1.org/v1'
 const OPENF1_FETCH_OPTIONS = { next: { revalidate: 60 } } as const
 
 /**
@@ -12,8 +12,8 @@ const OPENF1_FETCH_OPTIONS = { next: { revalidate: 60 } } as const
  */
 export async function getRaceResultBySessionKey(sessionKey: number): Promise<number[] | null> {
   try {
-    const res = await fetch(
-      `${F1_API_URL}/session_result?session_key=${sessionKey}&position<=10`,
+    const res = await openf1Fetch(
+      `/session_result?session_key=${sessionKey}&position<=10`,
       OPENF1_FETCH_OPTIONS
     )
     if (!res.ok) return null

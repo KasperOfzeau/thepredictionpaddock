@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { openf1Fetch } from '@/lib/services/openf1'
 import type { Driver } from '@/lib/types'
 
-const F1_API_URL = 'https://api.openf1.org/v1'
 export const revalidate = 60
 
 /**
@@ -21,10 +21,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const [resultRes, driversRes] = await Promise.all([
-      fetch(`${F1_API_URL}/session_result?session_key=${key}&position<=10`, {
+      openf1Fetch(`/session_result?session_key=${key}&position<=10`, {
         next: { revalidate },
       }),
-      fetch(`${F1_API_URL}/drivers?session_key=${key}`, {
+      openf1Fetch(`/drivers?session_key=${key}`, {
         next: { revalidate },
       }),
     ])
