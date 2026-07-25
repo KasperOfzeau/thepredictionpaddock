@@ -55,3 +55,9 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Checkered-flag active-state indicator (nav, side menu) */
+.checkered-flag-indicator {
+  background-image: conic-gradient(#000 90deg, rgb(255 255 255 / 0.7) 90deg 180deg, #000 180deg 270deg, rgb(255 255 255 / 0.7) 270deg);
+  background-size: 16px 16px;
+}

@@ -188,12 +188,15 @@ export default function MobileNavDrawer({
                   <Link
                     href={href}
                     onClick={onClose}
-                    className={`block px-4 py-3 text-base font-medium rounded-md transition-colors ${
+                    className={`relative block overflow-hidden pl-7 pr-4 py-3 text-base font-medium rounded-md transition-colors ${
                       active
-                        ? 'text-white bg-white/5 border-l-2 border-f1-red'
-                        : 'text-zinc-300 hover:text-white hover:bg-white/5 border-l-2 border-transparent'
+                        ? 'text-white bg-white/5'
+                        : 'text-zinc-300 hover:text-white hover:bg-white/5'
                     }`}
                   >
+                    {active && (
+                      <span aria-hidden className="checkered-flag-indicator absolute inset-y-0 left-0 w-4" />
+                    )}
                     {label}
                   </Link>
                 </li>
