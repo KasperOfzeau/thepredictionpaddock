@@ -87,14 +87,11 @@ async function savePredictionPoints(
   points: number,
   supabase: SupabaseClient
 ): Promise<boolean> {
-  const pointsChanged = prediction.points !== points
-  const updatePayload = pointsChanged
-    ? { points, updated_at: new Date().toISOString() }
-    : { points }
+  if (prediction.points === points) return false
 
   const { error } = await supabase
     .from('predictions')
-    .update(updatePayload)
+    .update({ points, updated_at: new Date().toISOString() })
     .eq('id', prediction.id)
 
   if (error) {
@@ -102,7 +99,7 @@ async function savePredictionPoints(
     return false
   }
 
-  return pointsChanged
+  return true
 }
 
 export interface PredictionPointsRefreshResult {
@@ -159,12 +156,14 @@ export async function refreshPointsForSession(
     return updatedUserIds
   }
 
-  for (const row of rows) {
-    const prediction = row as Prediction
-    const points = calculatePoints(prediction, resultOrder)
-    const updated = await savePredictionPoints(prediction, points, supabase)
-    if (updated) updatedUserIds.add(prediction.user_id)
-  }
+  await Promise.all(
+    rows.map(async (row) => {
+      const prediction = row as Prediction
+      const points = calculatePoints(prediction, resultOrder)
+      const updated = await savePredictionPoints(prediction, points, supabase)
+      if (updated) updatedUserIds.add(prediction.user_id)
+    })
+  )
 
   return updatedUserIds
 }

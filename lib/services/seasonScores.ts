@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getLastEvent } from '@/lib/services/meetings'
 import { refreshPointsForSession } from '@/lib/services/scoring'
@@ -19,17 +20,10 @@ export async function getLastFinishedRaceEnd(): Promise<string | null> {
   }
 }
 
-type MeetingRelation = { year: number } | { year: number }[] | null
-
-function getMeetingYear(meetings: MeetingRelation): number | null {
-  const meeting = Array.isArray(meetings) ? meetings[0] : meetings
-  return meeting?.year ?? null
-}
-
 /**
  * Refresh points for finished sessions that affect the requested users.
- * Results are fetched from OpenF1 once per session; if a result is unavailable,
- * existing stored points are left untouched.
+ * Results are fetched from OpenF1 once per session (in parallel); if a result
+ * is unavailable, existing stored points are left untouched.
  */
 async function refreshAvailablePredictionPointsForUsers(
   admin: ReturnType<typeof createAdminClient>,
@@ -44,6 +38,7 @@ async function refreshAvailablePredictionPointsForUsers(
     .select('session_key, meetings!inner(year)')
     .in('user_id', userIds)
     .not('session_key', 'is', null)
+    .eq('meetings.year', year)
 
   if (error || !predictionSessions?.length) {
     if (error) console.error('Error fetching prediction sessions:', error)
@@ -53,16 +48,17 @@ async function refreshAvailablePredictionPointsForUsers(
   const sessionKeys = Array.from(
     new Set(
       predictionSessions
-        .filter((row: { meetings?: MeetingRelation }) => getMeetingYear(row.meetings ?? null) === year)
         .map((row: { session_key: number | null }) => row.session_key)
         .filter((sessionKey): sessionKey is number => typeof sessionKey === 'number')
     )
   )
 
-  for (const sessionKey of sessionKeys) {
-    const updatedForSession = await refreshPointsForSession(sessionKey, admin)
+  const results = await Promise.all(
+    sessionKeys.map((sessionKey) => refreshPointsForSession(sessionKey, admin))
+  )
+  results.forEach((updatedForSession) => {
     updatedForSession.forEach((userId) => updatedUserIds.add(userId))
-  }
+  })
 
   return updatedUserIds
 }
@@ -82,6 +78,7 @@ async function computeSeasonPointsForUsers(
     .from('predictions')
     .select('user_id, points, meetings!inner(year)')
     .in('user_id', userIds)
+    .eq('meetings.year', year)
 
   if (error) {
     console.error('Error computing season points:', error)
@@ -89,8 +86,7 @@ async function computeSeasonPointsForUsers(
   }
 
   for (const row of rows ?? []) {
-    const typedRow = row as { user_id: string; points?: number | null; meetings?: MeetingRelation }
-    if (getMeetingYear(typedRow.meetings ?? null) !== year) continue
+    const typedRow = row as { user_id: string; points?: number | null }
     totals[typedRow.user_id] = (totals[typedRow.user_id] ?? 0) + (typedRow.points ?? 0)
   }
 
@@ -143,6 +139,31 @@ export async function getOrComputeUserSeasonPoints(
   return result[userId] ?? 0
 }
 
+async function computeAndPersistSeasonPointsForUsers(
+  userIds: string[],
+  year: number
+): Promise<Record<string, number>> {
+  const admin = createAdminClient()
+
+  await refreshAvailablePredictionPointsForUsers(admin, userIds, year)
+  const result = await computeSeasonPointsForUsers(admin, userIds, year)
+  await upsertSeasonPointsForUsers(admin, result, year)
+  return result
+}
+
+/**
+ * Cached per exact (user set, year) combination. This computation refreshes
+ * race points from OpenF1 and writes back to the database, so without this
+ * cache every caller (pool pages, the leaderboard, profile lookups) would
+ * repeat that full pass on every request. Capped to one recompute per minute
+ * per user set.
+ */
+const getCachedSeasonPointsForUserSet = unstable_cache(
+  computeAndPersistSeasonPointsForUsers,
+  ['season-points-for-user-set'],
+  { revalidate: 60 }
+)
+
 /**
  * Refresh available race points, then recompute and save season points for multiple users.
  * Returns a map of user_id -> points.
@@ -153,10 +174,6 @@ export async function getOrComputeSeasonPointsForUsers(
 ): Promise<Record<string, number>> {
   if (userIds.length === 0) return {}
 
-  const admin = createAdminClient()
-
-  await refreshAvailablePredictionPointsForUsers(admin, userIds, year)
-  const result = await computeSeasonPointsForUsers(admin, userIds, year)
-  await upsertSeasonPointsForUsers(admin, result, year)
-  return result
+  const canonicalUserIds = Array.from(new Set(userIds)).sort()
+  return getCachedSeasonPointsForUserSet(canonicalUserIds, year)
 }
