@@ -396,7 +396,7 @@ const ResultDetailView = forwardRef<ResultDetailViewHandle, ResultDetailViewProp
                           <>
                             {renderDriverBadge(driver)}
                             <span className="truncate text-xs font-medium text-white sm:text-sm">
-                              {driver.name_acronym}
+                              {driver.full_name}
                             </span>
                           </>
                         ) : (

@@ -316,10 +316,7 @@ export default function PredictionShareCard({
                     {row.driver ? (
                       <>
                         {renderDriverBadge(row.driver)}
-                        <span style={{ fontWeight: 600 }}>{row.driver.name_acronym}</span>
-                        <span style={{ fontSize: 26, fontWeight: 500, color: 'rgba(255,255,255,0.45)' }}>
-                          {row.driver.team_name}
-                        </span>
+                        <span style={{ fontWeight: 600 }}>{row.driver.full_name}</span>
                       </>
                     ) : (
                       <span style={{ color: 'rgba(255,255,255,0.4)' }}>#{row.driverNumber}</span>
