@@ -386,7 +386,7 @@ export default function StartingGridPrediction({
 
     if (result.success) {
       setSuccess(true)
-      setTimeout(() => router.push('/predictions'), 1200)
+      setTimeout(() => router.push(`/results/${session.session_key}`), 1200)
     } else {
       setError(result.error || 'Failed to save prediction')
     }
