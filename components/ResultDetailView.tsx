@@ -5,6 +5,7 @@ import { toPng } from 'html-to-image'
 import type { Driver, Prediction } from '@/lib/types'
 import { getDriversForMeeting } from '@/lib/services/predictions'
 import ResultShareCard, { SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './ResultShareCard'
+import PredictionShareCard from './PredictionShareCard'
 
 type ResultStatus = 'correct' | 'in_top10' | 'wrong'
 
@@ -20,7 +21,7 @@ interface ResultDetailViewProps {
   sharerAvatarUrl?: string | null
   allowShare?: boolean
   showShareButton?: boolean
-  onShareStateChange?: (state: { canShare: boolean; shareBusy: boolean }) => void
+  onShareStateChange?: (state: { canShare: boolean; shareBusy: boolean; shareLabel: string }) => void
 }
 
 export interface ResultDetailViewHandle {
@@ -254,7 +255,7 @@ const ResultDetailView = forwardRef<ResultDetailViewHandle, ResultDetailViewProp
     [prediction]
   )
 
-  const canShare =
+  const canShareResult =
     allowShare &&
     !loading &&
     !error &&
@@ -262,9 +263,19 @@ const ResultDetailView = forwardRef<ResultDetailViewHandle, ResultDetailViewProp
     resultOrder.length >= 10 &&
     prediction != null
 
+  const canSharePrediction =
+    allowShare &&
+    !loading &&
+    !canShareResult &&
+    predictionOnly &&
+    prediction != null
+
+  const canShare = canShareResult || canSharePrediction
+  const shareLabel = canSharePrediction ? 'Share prediction' : 'Share result'
+
   useEffect(() => {
-    onShareStateChange?.({ canShare, shareBusy })
-  }, [canShare, onShareStateChange, shareBusy])
+    onShareStateChange?.({ canShare, shareBusy, shareLabel })
+  }, [canShare, onShareStateChange, shareBusy, shareLabel])
 
   const scoreSummary = useMemo(() => {
     if (!prediction || !resultOrder || resultOrder.length < 10) return null
@@ -284,7 +295,7 @@ const ResultDetailView = forwardRef<ResultDetailViewHandle, ResultDetailViewProp
   }, [prediction, predictionOrder, resultOrder])
 
   const handleShareImage = useCallback(async () => {
-    if (!shareCardRef.current || !prediction || !resultOrder || resultOrder.length < 10) return
+    if (!shareCardRef.current || !prediction || !(canShareResult || canSharePrediction)) return
 
     setShareBusy(true)
     try {
@@ -317,7 +328,7 @@ const ResultDetailView = forwardRef<ResultDetailViewHandle, ResultDetailViewProp
     } finally {
       setShareBusy(false)
     }
-  }, [meetingName, prediction, resultOrder])
+  }, [canShareResult, canSharePrediction, meetingName, prediction])
 
   useImperativeHandle(ref, () => ({
     share: () => {
@@ -328,33 +339,35 @@ const ResultDetailView = forwardRef<ResultDetailViewHandle, ResultDetailViewProp
   return (
     <>
       <section className="rounded-2xl border border-white/10 bg-white/5 p-4 sm:p-6">
-        <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-white/45 sm:text-xs sm:tracking-[0.24em]">Detailed result</p>
-          </div>
-          {prediction && (
-            <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-3">
-              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 sm:px-4 sm:py-3">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-white/45 sm:text-xs sm:tracking-[0.2em]">Score</p>
-                <p className="mt-1 text-lg font-semibold text-white sm:text-2xl">
-                  {points != null ? `${points} pts` : 'Pending'}
-                </p>
-              </div>
-              {scoreSummary && (
-                <>
-                  <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 sm:px-4 sm:py-3">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-white/45 sm:text-xs sm:tracking-[0.2em]">Correct</p>
-                    <p className="mt-1 text-lg font-semibold text-emerald-300 sm:text-2xl">{scoreSummary.correct}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 sm:px-4 sm:py-3">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-white/45 sm:text-xs sm:tracking-[0.2em]">Top 10</p>
-                    <p className="mt-1 text-lg font-semibold text-amber-300 sm:text-2xl">{scoreSummary.inTop10}</p>
-                  </div>
-                </>
-              )}
+        {!predictionOnly && (
+          <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:pb-5 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/45 sm:text-xs sm:tracking-[0.24em]">Detailed result</p>
             </div>
-          )}
-        </div>
+            {prediction && (
+              <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-3">
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 sm:px-4 sm:py-3">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-white/45 sm:text-xs sm:tracking-[0.2em]">Score</p>
+                  <p className="mt-1 text-lg font-semibold text-white sm:text-2xl">
+                    {points != null ? `${points} pts` : 'Pending'}
+                  </p>
+                </div>
+                {scoreSummary && (
+                  <>
+                    <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 sm:px-4 sm:py-3">
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-white/45 sm:text-xs sm:tracking-[0.2em]">Correct</p>
+                      <p className="mt-1 text-lg font-semibold text-emerald-300 sm:text-2xl">{scoreSummary.correct}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 sm:px-4 sm:py-3">
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-white/45 sm:text-xs sm:tracking-[0.2em]">Top 10</p>
+                      <p className="mt-1 text-lg font-semibold text-amber-300 sm:text-2xl">{scoreSummary.inTop10}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 sm:mt-5">
           {loading && (
@@ -365,11 +378,6 @@ const ResultDetailView = forwardRef<ResultDetailViewHandle, ResultDetailViewProp
 
           {!loading && predictionOnly && prediction && (
             <div>
-              {error && (
-                <div className="mb-4 rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-                  Result not yet available. Showing the saved prediction instead.
-                </div>
-              )}
               <div className="mb-3 grid grid-cols-[32px_minmax(0,1fr)] gap-2 px-2 text-[10px] font-medium uppercase tracking-[0.16em] text-white/45 sm:grid-cols-[40px_minmax(0,1fr)] sm:gap-3 sm:px-3 sm:text-xs sm:tracking-[0.24em]">
                 <div className="text-center">#</div>
                 <div>Prediction</div>
@@ -382,7 +390,7 @@ const ResultDetailView = forwardRef<ResultDetailViewHandle, ResultDetailViewProp
                       key={`${index + 1}-${driverNumber}`}
                       className="grid grid-cols-[32px_minmax(0,1fr)] gap-2 rounded-xl border border-white/10 bg-black/20 px-2.5 py-2.5 sm:grid-cols-[40px_minmax(0,1fr)] sm:gap-3 sm:px-3 sm:py-3"
                     >
-                      <div className="text-center text-xs font-bold text-white/45 sm:text-sm">{index + 1}</div>
+                      <div className="flex items-center justify-center text-xs font-bold text-white/45 sm:text-sm">{index + 1}</div>
                       <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
                         {driver ? (
                           <>
@@ -509,28 +517,39 @@ const ResultDetailView = forwardRef<ResultDetailViewHandle, ResultDetailViewProp
                 <path d="m8.59 13.51 6.83 3.98" />
                 <path d="m15.41 6.51-6.82 3.98" />
               </svg>
-              <span>{shareBusy ? 'Sharing...' : 'Share result'}</span>
+              <span>{shareBusy ? 'Sharing...' : shareLabel}</span>
             </button>
           </div>
         )}
       </section>
 
-      {canShare && resultOrder && prediction && (
+      {canShare && prediction && (
         <div
           aria-hidden
           style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1, pointerEvents: 'none' }}
         >
           <div ref={shareCardRef}>
-            <ResultShareCard
-              meetingName={meetingName}
-              sessionName={sessionName}
-              resultOrder={resultOrder}
-              prediction={prediction}
-              drivers={drivers}
-              points={points}
-              sharerName={sharerName}
-              sharerAvatarUrl={sharerAvatarUrl}
-            />
+            {canShareResult && resultOrder ? (
+              <ResultShareCard
+                meetingName={meetingName}
+                sessionName={sessionName}
+                resultOrder={resultOrder}
+                prediction={prediction}
+                drivers={drivers}
+                points={points}
+                sharerName={sharerName}
+                sharerAvatarUrl={sharerAvatarUrl}
+              />
+            ) : (
+              <PredictionShareCard
+                meetingName={meetingName}
+                sessionName={sessionName}
+                predictionOrder={predictionOrder?.filter((id): id is number => id !== null) ?? []}
+                drivers={drivers}
+                sharerName={sharerName}
+                sharerAvatarUrl={sharerAvatarUrl}
+              />
+            )}
           </div>
         </div>
       )}

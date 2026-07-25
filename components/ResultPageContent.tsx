@@ -42,6 +42,7 @@ export default function ResultPageContent({
   const detailViewRef = useRef<ResultDetailViewHandle>(null)
   const [canShare, setCanShare] = useState(false)
   const [shareBusy, setShareBusy] = useState(false)
+  const [shareLabel, setShareLabel] = useState('Share result')
 
   return (
     <>
@@ -72,19 +73,20 @@ export default function ResultPageContent({
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2 sm:gap-3">
+          <div className="flex flex-nowrap items-center gap-2 sm:gap-3">
             <Link
               href={backHref}
-              className="inline-flex rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/8 sm:px-5"
+              className="inline-flex shrink-0 rounded-full border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/8 sm:px-5 sm:py-2 sm:text-sm"
             >
-              {backLabel}
+              <span className="sm:hidden">Back</span>
+              <span className="hidden sm:inline">{backLabel}</span>
             </Link>
             {allowShare && canShare && (
               <button
                 type="button"
                 onClick={() => detailViewRef.current?.share()}
                 disabled={shareBusy}
-                className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-f1-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-f1-red/20 disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border-2 border-f1-red px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-f1-red/20 disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 sm:py-2 sm:text-sm"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -104,7 +106,7 @@ export default function ResultPageContent({
                   <path d="m8.59 13.51 6.83 3.98" />
                   <path d="m15.41 6.51-6.82 3.98" />
                 </svg>
-                <span>{shareBusy ? 'Sharing...' : 'Share result'}</span>
+                <span>{shareBusy ? 'Sharing...' : shareLabel}</span>
               </button>
             )}
           </div>
@@ -125,9 +127,10 @@ export default function ResultPageContent({
           sharerAvatarUrl={sharerAvatarUrl}
           allowShare={allowShare}
           showShareButton={false}
-          onShareStateChange={({ canShare: nextCanShare, shareBusy: nextShareBusy }) => {
+          onShareStateChange={({ canShare: nextCanShare, shareBusy: nextShareBusy, shareLabel: nextShareLabel }) => {
             setCanShare(nextCanShare)
             setShareBusy(nextShareBusy)
+            setShareLabel(nextShareLabel)
           }}
         />
       </section>

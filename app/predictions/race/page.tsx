@@ -3,11 +3,9 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { createClient } from '@/lib/supabase/server'
-import { getNextEvent, canMakePrediction } from '@/lib/services/meetings'
+import { getNextEvent, canMakePrediction, hasQualifyingHappened } from '@/lib/services/meetings'
+import { getDriverRosterForUpcomingMeeting } from '@/lib/services/predictions'
 import StartingGridPrediction from '@/components/StartingGridPrediction'
-import type { Driver } from '@/lib/types'
-
-const F1_API_URL = 'https://api.openf1.org/v1'
 
 function normalizeTeamName(name: string): string {
   const normalized = name.toLowerCase().trim()
@@ -81,19 +79,11 @@ export default async function RacePredictionPage() {
     )
   }
 
-  const driversRes = await fetch(
-    `${F1_API_URL}/drivers?meeting_key=${meeting.meeting_key}`,
-    { next: { revalidate: 60 } }
-  )
-  let drivers: Driver[] = []
-  if (driversRes.ok) {
-    const data: Driver[] = await driversRes.json()
-    const byNumber = new Map<number, Driver>()
-    data.forEach((d) => {
-      if (!byNumber.has(d.driver_number)) byNumber.set(d.driver_number, d)
-    })
-    drivers = Array.from(byNumber.values()).sort((a, b) => a.driver_number - b.driver_number)
-  }
+  const [drivers, qualifyingHappened] = await Promise.all([
+    getDriverRosterForUpcomingMeeting(meeting.meeting_key),
+    hasQualifyingHappened(session, meeting.meeting_key),
+  ])
+  const isProvisionalLineup = !qualifyingHappened
 
   let constructorStandingsOrder: string[] = []
   try {
@@ -115,31 +105,23 @@ export default async function RacePredictionPage() {
     console.error('Error fetching constructor standings:', error)
   }
 
-  const [{ data: existingPrediction }, { data: profile }] = await Promise.all([
-    supabase
-      .from('predictions')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('session_key', session.session_key)
-      .maybeSingle(),
-    supabase
-      .from('profiles')
-      .select('username, avatar_url')
-      .eq('id', user.id)
-      .maybeSingle(),
-  ])
+  const { data: existingPrediction } = await supabase
+    .from('predictions')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('session_key', session.session_key)
+    .maybeSingle()
 
   return (
     <div className="bg-carbon-black flex flex-col">
       <Nav />
       <StartingGridPrediction
         drivers={drivers}
+        isProvisionalLineup={isProvisionalLineup}
         meeting={meeting}
         session={session}
         existingPrediction={existingPrediction}
         constructorStandingsOrder={constructorStandingsOrder}
-        sharerName={profile?.username ?? null}
-        sharerAvatarUrl={profile?.avatar_url ?? null}
       />
     </div>
   )

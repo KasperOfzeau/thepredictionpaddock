@@ -4,10 +4,8 @@ import { useState, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
-import { toPng } from 'html-to-image'
 import type { Driver, Meeting, Session, Prediction } from '@/lib/types'
 import { savePrediction } from '@/lib/services/predictions'
-import PredictionShareCard, { SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './PredictionShareCard'
 
 interface StartingGridPredictionProps {
   drivers: Driver[]
@@ -15,8 +13,7 @@ interface StartingGridPredictionProps {
   session: Session
   existingPrediction: Prediction | null
   constructorStandingsOrder?: string[]
-  sharerName?: string | null
-  sharerAvatarUrl?: string | null
+  isProvisionalLineup?: boolean
 }
 
 function normalizeTeamName(name: string): string {
@@ -314,8 +311,7 @@ export default function StartingGridPrediction({
   session,
   existingPrediction,
   constructorStandingsOrder = [],
-  sharerName = null,
-  sharerAvatarUrl = null,
+  isProvisionalLineup = false,
 }: StartingGridPredictionProps) {
   const router = useRouter()
 
@@ -340,8 +336,6 @@ export default function StartingGridPrediction({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [shareBusy, setShareBusy] = useState(false)
-  const shareCardRef = useRef<HTMLDivElement>(null)
 
   const driverMap = useMemo(() => {
     const map = new Map<number, Driver>()
@@ -352,42 +346,6 @@ export default function StartingGridPrediction({
   const filledCount = selectedDrivers.filter((id) => id !== null).length
   const isComplete = filledCount === 10
   const isEditing = existingPrediction !== null
-
-  const handleShareImage = useCallback(async () => {
-    if (!shareCardRef.current || !isComplete) return
-
-    setShareBusy(true)
-    try {
-      const dataUrl = await toPng(shareCardRef.current, {
-        width: SHARE_CARD_WIDTH,
-        height: SHARE_CARD_HEIGHT,
-        pixelRatio: 1,
-        cacheBust: true,
-      })
-      const response = await fetch(dataUrl)
-      const blob = await response.blob()
-      const safeName = meeting.meeting_name.replace(/[^\w\s-]/g, '').replace(/\s+/g, ' ').trim() || 'race'
-      const fileName = `My prediction - ${safeName}.png`
-      const file = new File([blob], fileName, { type: 'image/png' })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = fileName
-      anchor.click()
-      URL.revokeObjectURL(url)
-
-      if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: `Mijn voorspelling – ${meeting.meeting_name}`,
-          files: [file],
-        })
-      }
-    } catch {
-      // Download already happened; native share is best-effort.
-    } finally {
-      setShareBusy(false)
-    }
-  }, [isComplete, meeting.meeting_name])
 
   const handleSpotClick = (position: number) => {
     if (activeSpot === position && drawerOpen) {
@@ -454,6 +412,14 @@ export default function StartingGridPrediction({
               {meeting.meeting_name}
             </h1>
             <p className="text-xs sm:text-sm text-white/50">{session.session_name} prediction</p>
+            {isProvisionalLineup && (
+              <p className="mt-0.5 flex items-center gap-1 text-[11px] text-white/35">
+                <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Provisional lineup, qualifying hasn&apos;t happened yet
+              </p>
+            )}
           </div>
         </div>
 
@@ -461,35 +427,6 @@ export default function StartingGridPrediction({
           <span className="text-sm text-white/50 tabular-nums">
             {filledCount}/10 positions
           </span>
-          {isComplete && (
-            <button
-              type="button"
-              onClick={handleShareImage}
-              disabled={shareBusy}
-              title="Share prediction"
-              className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-f1-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-f1-red/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <circle cx="18" cy="5" r="3" />
-                <circle cx="6" cy="12" r="3" />
-                <circle cx="18" cy="19" r="3" />
-                <path d="m8.59 13.51 6.83 3.98" />
-                <path d="m15.41 6.51-6.82 3.98" />
-              </svg>
-              <span>{shareBusy ? 'Sharing...' : 'Share'}</span>
-            </button>
-          )}
           <button
             type="button"
             onClick={handleSubmit}
@@ -590,23 +527,6 @@ export default function StartingGridPrediction({
         />
       </div>
 
-      {isComplete && (
-        <div
-          aria-hidden
-          style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1, pointerEvents: 'none' }}
-        >
-          <div ref={shareCardRef}>
-            <PredictionShareCard
-              meetingName={meeting.meeting_name}
-              sessionName={session.session_name}
-              predictionOrder={selectedDrivers.filter((id): id is number => id !== null)}
-              drivers={drivers}
-              sharerName={sharerName}
-              sharerAvatarUrl={sharerAvatarUrl}
-            />
-          </div>
-        </div>
-      )}
     </main>
   )
 }

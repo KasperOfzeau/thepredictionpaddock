@@ -8,6 +8,7 @@ import {
   getNextRaceOrSprintForMeeting,
   syncSessionsForMeeting,
 } from '@/lib/services/sessions'
+import { getDriverRosterForUpcomingMeeting } from '@/lib/services/predictions'
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -433,32 +434,50 @@ async function isBeforeFirstRaceWeekendWithClient(
 
 /**
  * Check if a prediction can be made for this race/sprint.
- * Requires: session in the future, qualifying already finished, starting grid available from API.
+ * Requires: session in the future, and a driver roster is available (this
+ * weekend's own data, or the most recent completed meeting's as a fallback
+ * before this weekend's data exists).
  */
 export async function canMakePrediction(
   session: Session,
   meetingKey: number
 ): Promise<PredictionAvailability> {
-  const supabase = await createClient()
-  return canMakePredictionWithClient(supabase, session, meetingKey)
+  return canMakePredictionImpl(session, meetingKey)
 }
 
 /**
- * Same as {@link canMakePrediction} but uses the admin client so it can be
- * invoked from `unstable_cache`. The result depends only on the session and
- * upstream OpenF1 grid data – it is identical for every visitor and therefore
- * safe to cache globally.
+ * Same as {@link canMakePrediction}. The result depends only on the session
+ * and upstream OpenF1 driver data – it is identical for every visitor and
+ * therefore safe to cache globally (e.g. via `unstable_cache`).
  */
 export async function canMakePredictionForPublic(
   session: Session,
   meetingKey: number
 ): Promise<PredictionAvailability> {
-  const supabase = createAdminClient()
-  return canMakePredictionWithClient(supabase, session, meetingKey)
+  return canMakePredictionImpl(session, meetingKey)
 }
 
-async function canMakePredictionWithClient(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+/**
+ * Whether qualifying (or Sprint Qualifying, for a Sprint weekend) has
+ * finished for this meeting. Used to decide whether the driver lineup shown
+ * on the prediction page is still provisional (e.g. sourced from practice
+ * sessions or a previous meeting) rather than the confirmed grid.
+ */
+export async function hasQualifyingHappened(session: Session, meetingKey: number): Promise<boolean> {
+  const supabase = await createClient()
+  const qualifyingName = session.session_name === 'Sprint' ? 'Sprint Qualifying' : 'Qualifying'
+  const { data: qualifyingSession } = await supabase
+    .from('sessions')
+    .select('date_end')
+    .eq('meeting_key', meetingKey)
+    .eq('session_name', qualifyingName)
+    .single()
+
+  if (!qualifyingSession?.date_end) return false
+  return new Date(qualifyingSession.date_end) <= new Date()
+}
+
+async function canMakePredictionImpl(
   session: Session,
   meetingKey: number
 ): Promise<PredictionAvailability> {
@@ -469,34 +488,10 @@ async function canMakePredictionWithClient(
     return { canPredict: false, reason: 'Race has started' }
   }
 
-  const qualifyingName = session.session_name === 'Sprint' ? 'Sprint Qualifying' : 'Qualifying'
-  const { data: qualifyingSession } = await supabase
-    .from('sessions')
-    .select('session_key')
-    .eq('meeting_key', meetingKey)
-    .eq('session_name', qualifyingName)
-    .single()
-
-  if (!qualifyingSession) {
-    return { canPredict: false, reason: 'Qualifying session not found' }
-  }
-
-  // TODO: re-enable qualifying check
-  // if (new Date(qualifyingSession.date_end) > now) {
-  //   return { canPredict: false, reason: 'Qualifying not yet happened' }
-  // }
-
-  const res = await fetch(
-    `${F1_API_URL}/drivers?session_key=${qualifyingSession.session_key}`,
-    OPENF1_FETCH_OPTIONS
-  )
-  if (!res.ok) return { canPredict: false, reason: 'Grid data not available' }
-
-  const grid = await res.json()
-  const hasGrid = Array.isArray(grid) && grid.length > 0
-  return hasGrid
+  const drivers = await getDriverRosterForUpcomingMeeting(meetingKey)
+  return drivers.length > 0
     ? { canPredict: true }
-    : { canPredict: false, reason: 'Grid data not available' }
+    : { canPredict: false, reason: 'Driver data not available yet' }
 }
 
 // -----------------------------------------------------------------------------
