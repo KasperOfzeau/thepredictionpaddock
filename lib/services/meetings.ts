@@ -457,26 +457,6 @@ export async function canMakePredictionForPublic(
   return canMakePredictionImpl(session, meetingKey)
 }
 
-/**
- * Whether qualifying (or Sprint Qualifying, for a Sprint weekend) has
- * finished for this meeting. Used to decide whether the driver lineup shown
- * on the prediction page is still provisional (e.g. sourced from practice
- * sessions or a previous meeting) rather than the confirmed grid.
- */
-export async function hasQualifyingHappened(session: Session, meetingKey: number): Promise<boolean> {
-  const supabase = await createClient()
-  const qualifyingName = session.session_name === 'Sprint' ? 'Sprint Qualifying' : 'Qualifying'
-  const { data: qualifyingSession } = await supabase
-    .from('sessions')
-    .select('date_end')
-    .eq('meeting_key', meetingKey)
-    .eq('session_name', qualifyingName)
-    .single()
-
-  if (!qualifyingSession?.date_end) return false
-  return new Date(qualifyingSession.date_end) <= new Date()
-}
-
 async function canMakePredictionImpl(
   session: Session,
   meetingKey: number

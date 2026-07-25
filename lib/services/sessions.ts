@@ -47,6 +47,19 @@ export async function getQualifyingForMeeting(meetingKey: number): Promise<Sessi
   return sessions ?? []
 }
 
+/**
+ * The qualifying session that determines the starting grid for the given
+ * race/sprint session (Sprint Qualifying for a Sprint, Qualifying otherwise).
+ */
+export async function getQualifyingSessionForEvent(
+  session: Session,
+  meetingKey: number
+): Promise<Session | null> {
+  const qualifyingName = session.session_name === 'Sprint' ? 'Sprint Qualifying' : 'Qualifying'
+  const sessions = await getQualifyingForMeeting(meetingKey)
+  return sessions.find((s) => s.session_name === qualifyingName) ?? null
+}
+
 // -----------------------------------------------------------------------------
 // Helpers for getNextEvent (used by meetings.ts)
 // -----------------------------------------------------------------------------

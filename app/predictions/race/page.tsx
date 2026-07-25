@@ -3,8 +3,10 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { createClient } from '@/lib/supabase/server'
-import { getNextEvent, canMakePrediction, hasQualifyingHappened } from '@/lib/services/meetings'
+import { getNextEvent, canMakePrediction } from '@/lib/services/meetings'
 import { getDriverRosterForUpcomingMeeting } from '@/lib/services/predictions.server'
+import { getQualifyingSessionForEvent } from '@/lib/services/sessions'
+import { getQualifyingResult } from '@/lib/services/qualifying'
 import StartingGridPrediction from '@/components/StartingGridPrediction'
 
 function normalizeTeamName(name: string): string {
@@ -79,11 +81,19 @@ export default async function RacePredictionPage() {
     )
   }
 
-  const [drivers, qualifyingHappened] = await Promise.all([
+  const [drivers, qualifyingSession] = await Promise.all([
     getDriverRosterForUpcomingMeeting(meeting.meeting_key),
-    hasQualifyingHappened(session, meeting.meeting_key),
+    getQualifyingSessionForEvent(session, meeting.meeting_key),
   ])
+  const qualifyingHappened = qualifyingSession
+    ? new Date(qualifyingSession.date_end) <= new Date()
+    : false
   const isProvisionalLineup = !qualifyingHappened
+
+  const qualifyingResult =
+    qualifyingHappened && qualifyingSession
+      ? await getQualifyingResult(qualifyingSession.session_key)
+      : null
 
   let constructorStandingsOrder: string[] = []
   try {
@@ -122,6 +132,8 @@ export default async function RacePredictionPage() {
         session={session}
         existingPrediction={existingPrediction}
         constructorStandingsOrder={constructorStandingsOrder}
+        qualifyingResult={qualifyingResult}
+        qualifyingSessionName={qualifyingSession?.session_name}
       />
     </div>
   )

@@ -6,6 +6,8 @@ import Image from 'next/image'
 import Link from 'next/link'
 import type { Driver, Meeting, Session, Prediction } from '@/lib/types'
 import { savePrediction } from '@/lib/services/predictions'
+import QualifyingResultsPanel from '@/components/QualifyingResultsPanel'
+import type { QualifyingResult } from '@/lib/services/qualifying'
 
 interface StartingGridPredictionProps {
   drivers: Driver[]
@@ -14,6 +16,8 @@ interface StartingGridPredictionProps {
   existingPrediction: Prediction | null
   constructorStandingsOrder?: string[]
   isProvisionalLineup?: boolean
+  qualifyingResult?: QualifyingResult | null
+  qualifyingSessionName?: string
 }
 
 function normalizeTeamName(name: string): string {
@@ -312,6 +316,8 @@ export default function StartingGridPrediction({
   existingPrediction,
   constructorStandingsOrder = [],
   isProvisionalLineup = false,
+  qualifyingResult = null,
+  qualifyingSessionName,
 }: StartingGridPredictionProps) {
   const router = useRouter()
 
@@ -527,6 +533,13 @@ export default function StartingGridPrediction({
         />
       </div>
 
+      {qualifyingResult && qualifyingResult.resultOrder.length > 0 && (
+        <QualifyingResultsPanel
+          resultOrder={qualifyingResult.resultOrder}
+          drivers={qualifyingResult.drivers}
+          sessionLabel={qualifyingSessionName ?? 'Qualifying'}
+        />
+      )}
     </main>
   )
 }
