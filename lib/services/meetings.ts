@@ -1,3 +1,5 @@
+import fs from 'fs'
+import path from 'path'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Meeting, NextEvent, PredictionAvailability, Session } from '@/lib/types'
@@ -16,6 +18,33 @@ import { openf1Fetch } from '@/lib/services/openf1'
 // -----------------------------------------------------------------------------
 
 const OPENF1_FETCH_OPTIONS = { next: { revalidate: 60 } } as const
+
+// OpenF1 derives `circuit_image` from the Grand Prix's usual venue rather than
+// its actual circuit_key, so a race relocated to a different circuit (e.g. the
+// 2026 Bahrain GP moved to Kuala Lumpur, circuit_key 12) still gets served the
+// original venue's track icon. Add a manually-sourced outline to
+// public/images/circuit-outlines/ and map its circuit_key here to override it.
+const CIRCUIT_IMAGE_OVERRIDES: Record<number, string> = {
+  12: '/images/circuit-outlines/malaysia.png',
+}
+
+// Local circuit images are served from a stable URL (no content hash), so
+// Next's image optimizer would otherwise keep serving a stale cached render
+// after the underlying file is replaced. Bust it with the file's own mtime.
+function withFreshLocalImage(circuitImage: string | null): string | null {
+  if (!circuitImage || !circuitImage.startsWith('/')) return circuitImage
+  const relativePath = circuitImage.split('?')[0]
+  try {
+    const mtime = fs.statSync(path.join(process.cwd(), 'public', relativePath)).mtimeMs
+    return `${relativePath}?v=${mtime}`
+  } catch {
+    return relativePath
+  }
+}
+
+function resolveCircuitImage(circuitKey: number, circuitImage: string | null | undefined): string | null {
+  return withFreshLocalImage(CIRCUIT_IMAGE_OVERRIDES[circuitKey] ?? circuitImage ?? null)
+}
 
 // -----------------------------------------------------------------------------
 // Next event & meetings (public API)
@@ -72,7 +101,7 @@ export async function getNextEventFromApi(): Promise<NextEvent | null> {
     circuit_key: nextMeetingApi.circuit_key,
     circuit_short_name: nextMeetingApi.circuit_short_name,
     circuit_type: nextMeetingApi.circuit_type,
-    circuit_image: nextMeetingApi.circuit_image ?? null,
+    circuit_image: resolveCircuitImage(nextMeetingApi.circuit_key, nextMeetingApi.circuit_image),
     gmt_offset: nextMeetingApi.gmt_offset,
     date_start: nextMeetingApi.date_start,
     date_end: nextMeetingApi.date_end,
@@ -197,7 +226,7 @@ export async function getLastEventFromApi(): Promise<NextEvent | null> {
       circuit_key: meetingApi.circuit_key,
       circuit_short_name: meetingApi.circuit_short_name,
       circuit_type: meetingApi.circuit_type,
-      circuit_image: meetingApi.circuit_image ?? null,
+      circuit_image: resolveCircuitImage(meetingApi.circuit_key, meetingApi.circuit_image),
       gmt_offset: meetingApi.gmt_offset,
       date_start: meetingApi.date_start,
       date_end: meetingApi.date_end ?? meetingApi.date_start,
@@ -541,7 +570,7 @@ async function getUpcomingMeetings(
     .gte('date_end', now)
     .order('date_start', { ascending: true })
 
-  return data ?? []
+  return (data ?? []).map(withFreshMeetingCircuitImage)
 }
 
 async function getStartedMeetings(
@@ -556,7 +585,11 @@ async function getStartedMeetings(
     .lt('date_start', now)
     .order('date_start', { ascending: false })
 
-  return data ?? []
+  return (data ?? []).map(withFreshMeetingCircuitImage)
+}
+
+function withFreshMeetingCircuitImage(meeting: Meeting): Meeting {
+  return { ...meeting, circuit_image: withFreshLocalImage(meeting.circuit_image) }
 }
 
 // -----------------------------------------------------------------------------
@@ -595,7 +628,7 @@ async function syncAllMeetings(
     circuit_key: m.circuit_key,
     circuit_short_name: m.circuit_short_name,
     circuit_type: m.circuit_type,
-    circuit_image: m.circuit_image,
+    circuit_image: resolveCircuitImage(m.circuit_key as number, m.circuit_image as string | null | undefined),
     gmt_offset: m.gmt_offset,
     date_start: m.date_start,
     date_end: m.date_end,

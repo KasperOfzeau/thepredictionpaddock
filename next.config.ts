@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
       {
         pathname: "/images/circuits/**",
       },
+      {
+        pathname: "/images/circuit-outlines/**",
+      },
     ],
     remotePatterns: [
       {
