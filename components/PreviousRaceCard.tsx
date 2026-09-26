@@ -1,3 +1,5 @@
+import fs from 'fs'
+import path from 'path'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { NextEvent } from '@/lib/types'
@@ -8,7 +10,15 @@ import AvatarWithDecoration from '@/components/AvatarWithDecoration'
 function getCircuitImageSrc(circuitShortName: string): string {
   const base = circuitShortName.replace(/\s+/g, '-')
   const hasExtension = /\.(jpe?g|png|webp)$/i.test(base)
-  return `/images/circuits/${hasExtension ? base : `${base}.jpg`}`
+  const filename = hasExtension ? base : `${base}.jpg`
+  const relativePath = `/images/circuits/${filename}`
+
+  try {
+    const mtime = fs.statSync(path.join(process.cwd(), 'public', relativePath)).mtimeMs
+    return `${relativePath}?v=${mtime}`
+  } catch {
+    return relativePath
+  }
 }
 
 const PODIUM_MEDALS = ['🥇', '🥈', '🥉']
