@@ -37,6 +37,8 @@ export interface Profile {
   avatar_decoration_id?: string | null
   /** Optional public profile link (Instagram, YouTube, …); requires `website_url` column on profiles */
   website_url?: string | null
+  /** Ordered achievement ids shown in the public "trophy cabinet"; requires `showcased_achievement_ids` column on profiles */
+  showcased_achievement_ids?: string[] | null
 }
 
 export interface ProfileGarage {
@@ -57,13 +59,23 @@ export interface ProfileGarage {
 export interface Notification {
   id: string
   user_id: string
-  type: 'pool_invite' | 'race_reminder' | 'points_update'
+  type: 'pool_invite' | 'race_reminder' | 'points_update' | 'achievement_unlocked'
   title: string
   message: string
   link: string | null
   read: boolean
   created_at: string
   metadata: Record<string, any> | null
+}
+
+export interface UserAchievementProgress {
+  id: string
+  user_id: string
+  achievement_id: string
+  current_value: number
+  current_tier: number
+  unlocked_at: string | null
+  updated_at: string
 }
 
 // Renamed Race to Meeting

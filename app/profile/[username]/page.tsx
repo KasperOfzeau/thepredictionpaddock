@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -10,24 +9,16 @@ import Nav from '@/components/Nav'
 import { getRecentPredictionsForUser } from '@/lib/services/userPredictions'
 import { getGlobalLeaderboardRankForUser } from '@/lib/services/leaderboard'
 import { getGarageForUser } from '@/lib/services/garage'
+import { getProfileByUsername } from '@/lib/services/profiles'
+import { getAchievementProgressMapForUser } from '@/lib/services/achievements'
+import { getAchievement, MAX_SHOWCASED_ACHIEVEMENTS, type Achievement } from '@/lib/achievements/catalog'
+import type { UserAchievementProgress } from '@/lib/types'
 import UserPredictionsList from '@/components/UserPredictionsList'
 import AvatarWithDecoration from '@/components/AvatarWithDecoration'
 import ProfileLinkBadge from '@/components/ProfileLinkBadge'
 
 interface PageProps {
   params: Promise<{ username: string }>
-}
-
-/** Row used by public profile route (subset of profiles.* plus normalized bio) */
-interface ProfilePublicRow {
-  id: string
-  username: string | null
-  avatar_url: string | null
-  full_name: string | null
-  created_at: string | null
-  bio: string | null
-  avatar_decoration_id: string | null
-  website_url: string | null
 }
 
 const stripeOverlayStyle = {
@@ -59,34 +50,6 @@ function LockIcon({ className }: { className?: string }) {
     </svg>
   )
 }
-
-/**
- * Public profile by URL slug. Tries service-role client first (bypasses RLS for strangers),
- * then the session client (works locally without SUPABASE_SERVICE_ROLE_KEY if RLS allows).
- * Uses select('*') so missing optional columns (e.g. before migrations) do not break the query.
- */
-const getProfileByUsername = cache(async (username: string) => {
-  const normalized = username.toLowerCase()
-  const serverClient = await createClient()
-  const admin = getAdminClientIfAvailable()
-  const clients: SupabaseClient[] = admin ? [admin, serverClient] : [serverClient]
-
-  for (const client of clients) {
-    const { data, error } = await client.from('profiles').select('*').eq('username', normalized).maybeSingle()
-    if (error) continue
-    if (data) {
-      const d = data as Record<string, unknown>
-      return {
-        ...d,
-        bio: typeof d.bio === 'string' ? d.bio : null,
-        avatar_decoration_id:
-          typeof d.avatar_decoration_id === 'string' ? d.avatar_decoration_id : null,
-        website_url: typeof d.website_url === 'string' ? d.website_url : null,
-      } as ProfilePublicRow
-    }
-  }
-  return null
-})
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { username } = await params
@@ -124,7 +87,7 @@ export default async function ProfileByUsernamePage({ params }: PageProps) {
   const clientForSeason = adminOptional ?? supabase
   const adminClient: SupabaseClient = adminOptional ?? supabase
 
-  const [recentPredictions, seasonRes, rankInfo, predictionCountRes, maxPointsRes, garage] = await Promise.all([
+  const [recentPredictions, seasonRes, rankInfo, predictionCountRes, maxPointsRes, garage, achievementProgress] = await Promise.all([
     getRecentPredictionsForUser(profile.id, 5, adminClient),
     clientForSeason
       .from('season_predictions')
@@ -140,7 +103,26 @@ export default async function ProfileByUsernamePage({ params }: PageProps) {
       .eq('user_id', profile.id)
       .not('points', 'is', null),
     getGarageForUser(profile.id, currentSeasonYear, adminClient),
+    getAchievementProgressMapForUser(adminClient, profile.id),
   ])
+
+  // Only ever show ids that (a) the profile owner picked and (b) are
+  // actually unlocked right now — a stale or tampered-with showcase list
+  // can't display a badge that wasn't legitimately earned.
+  interface ShowcasedAchievement {
+    achievement: Achievement
+    progress: UserAchievementProgress
+  }
+  const showcasedAchievements: ShowcasedAchievement[] = profile.showcased_achievement_ids
+    .map((id): ShowcasedAchievement | null => {
+      const achievement = getAchievement(id)
+      const progress = achievementProgress.get(id)
+      return achievement && progress && progress.current_tier > 0
+        ? { achievement, progress }
+        : null
+    })
+    .filter((entry): entry is ShowcasedAchievement => entry !== null)
+    .slice(0, MAX_SHOWCASED_ACHIEVEMENTS)
 
   const seasonPrediction = seasonRes.data ?? null
   const predictionCount = predictionCountRes.count ?? 0
@@ -159,8 +141,6 @@ export default async function ProfileByUsernamePage({ params }: PageProps) {
         year: 'numeric',
       })
     : null
-
-  const achievementPlaceholders = Array.from({ length: 6 }, (_, i) => i)
 
   const bioText = profile.bio?.trim() ?? ''
   const hasBio = bioText.length > 0
@@ -360,27 +340,50 @@ export default async function ProfileByUsernamePage({ params }: PageProps) {
         </section>
         ) : null}
 
-        {/* Trophy cabinet */}
+        {/* Trophy cabinet — badges only if the owner picked some to show, but the
+            "view all" button is always here so visitors can still browse everything. */}
         <section className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5 sm:p-6">
           <h2 className="text-xl font-bold text-white">Trophy cabinet</h2>
-          <p className="mt-1 text-sm text-white/55">Earn badges by predicting and competing.</p>
-          <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {achievementPlaceholders.map((i) => (
-              <li
-                key={i}
-                className="group rounded-xl border border-white/10 bg-white/6 p-4 transition-all hover:border-f1-red/50 hover:shadow-[0_0_24px_-4px_rgba(255,24,1,0.35)]"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white/35 group-hover:text-white/50">
-                  <LockIcon className="h-6 w-6" />
-                </div>
-                <p className="mt-3 font-semibold text-white/80">???</p>
-                <p className="mt-1 text-xs text-white/40">Locked</p>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-4 text-xs text-white/45">
-            Achievements coming soon — earn them by predicting races and finishing seasons.
+          <p className="mt-1 text-sm text-white/55">
+            {showcasedAchievements.length > 0
+              ? (isOwnProfile ? 'Your featured achievements.' : `${profile.username}'s featured achievements.`)
+              : (isOwnProfile
+                  ? "You haven't featured any achievements yet."
+                  : `${profile.username} hasn't featured any achievements yet.`)}
           </p>
+          {showcasedAchievements.length > 0 ? (
+            <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {showcasedAchievements.map(({ achievement, progress }) => {
+                const tierInfo = achievement.tiers.find((t) => t.tier === progress.current_tier)
+                return (
+                  <li
+                    key={achievement.id}
+                    className="group rounded-xl border border-white/10 bg-white/6 p-4 transition-all hover:border-f1-red/50 hover:shadow-[0_0_24px_-4px_rgba(255,24,1,0.35)]"
+                  >
+                    {tierInfo ? (
+                      <div className="relative h-10 w-10">
+                        <Image src={tierInfo.icon} alt="" fill className="object-contain" />
+                      </div>
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white/35">
+                        <LockIcon className="h-6 w-6" />
+                      </div>
+                    )}
+                    <p className="mt-3 font-semibold text-white/90">{achievement.label}</p>
+                    <p className="mt-1 text-xs text-white/40">{achievement.description}</p>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : null}
+          <div className="mt-5">
+            <Link
+              href={`/profile/${profile.username}/achievements`}
+              className="inline-flex items-center rounded-full border-2 border-f1-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-f1-red/20"
+            >
+              View all achievements
+            </Link>
+          </div>
         </section>
 
         {/* Predictions */}

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { trackAchievementEvent } from '@/lib/services/achievementEvents'
 
 const supabase = createClient()
 
@@ -55,6 +56,9 @@ export default function InvitesList({ invites }: InvitesListProps) {
       setLoading(null)
       return
     }
+
+    trackAchievementEvent({ event: 'pool_joined' })
+    trackAchievementEvent({ event: 'pool_member_added', poolId: invite.pool_id })
 
     // Step 2: Update invite status
     const { error: updateError } = await supabase

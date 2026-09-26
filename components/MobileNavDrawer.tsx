@@ -10,6 +10,7 @@ const NAV_LINKS = [
   { href: '/', label: 'Home' },
   { href: '/predictions', label: 'Predictions' },
   { href: '/leaderboard', label: 'Leaderboard' },
+  { href: '/achievements', label: 'Achievements' },
   { href: '/pools/create', label: 'Create pool' },
 ]
 

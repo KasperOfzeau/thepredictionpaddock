@@ -3,11 +3,14 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import SettingsForm from '@/components/SettingsForm'
 import GarageSettingsForm from '@/components/GarageSettingsForm'
+import AchievementShowcaseSettingsForm, { type UnlockedAchievementOption } from '@/components/AchievementShowcaseSettingsForm'
 import PushNotificationToggle from '@/components/PushNotificationToggle'
 import Nav from '@/components/Nav'
 import LogoutButton from '@/components/LogoutButton'
 import { getCurrentGarageSeasonYear, getGarageForUser } from '@/lib/services/garage'
 import { getManualAvatarDecorationGrantsForUser } from '@/lib/services/userAvatarDecorations'
+import { getAchievementProgressMapForUser } from '@/lib/services/achievements'
+import { ACHIEVEMENTS } from '@/lib/achievements/catalog'
 
 export const metadata: Metadata = {
   title: 'Settings',
@@ -26,7 +29,7 @@ export default async function SettingsPage() {
   }
 
   const garageSeasonYear = getCurrentGarageSeasonYear()
-  const [{ data: profile }, garage, predictionCountRes, manualDecorationGrants] = await Promise.all([
+  const [{ data: profile }, garage, predictionCountRes, manualDecorationGrants, achievementProgress] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
     getGarageForUser(user.id, garageSeasonYear, supabase),
     supabase
@@ -34,9 +37,23 @@ export default async function SettingsPage() {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id),
     getManualAvatarDecorationGrantsForUser(user.id, supabase),
+    getAchievementProgressMapForUser(supabase, user.id),
   ])
 
   const predictionCount = predictionCountRes.count ?? 0
+
+  const unlockedAchievements: UnlockedAchievementOption[] = ACHIEVEMENTS
+    .filter((achievement) => (achievementProgress.get(achievement.id)?.current_tier ?? 0) > 0)
+    .map((achievement) => {
+      const tier = achievementProgress.get(achievement.id)!.current_tier
+      const tierInfo = achievement.tiers.find((t) => t.tier === tier)
+      return {
+        id: achievement.id,
+        label: achievement.label,
+        description: achievement.description,
+        icon: tierInfo?.icon ?? achievement.tiers[0].icon,
+      }
+    })
 
   return (
     <div className="min-h-screen bg-carbon-black">
@@ -70,6 +87,12 @@ export default async function SettingsPage() {
             userId={user.id}
             seasonYear={garageSeasonYear}
             initialGarage={garage}
+          />
+
+          <AchievementShowcaseSettingsForm
+            userId={user.id}
+            unlockedAchievements={unlockedAchievements}
+            initialSelectedIds={profile?.showcased_achievement_ids ?? []}
           />
 
           <section className="rounded-2xl border border-white/10 bg-white/5 p-6 sm:p-8">

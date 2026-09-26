@@ -6,6 +6,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import type { Driver, Meeting, Session, Prediction } from '@/lib/types'
 import { savePrediction } from '@/lib/services/predictions'
+import { trackAchievementEvent } from '@/lib/services/achievementEvents'
 import QualifyingResultsPanel from '@/components/QualifyingResultsPanel'
 import type { QualifyingResult } from '@/lib/services/qualifying'
 
@@ -392,6 +393,7 @@ export default function StartingGridPrediction({
 
     if (result.success) {
       setSuccess(true)
+      trackAchievementEvent({ event: 'prediction_saved', sessionKey: session.session_key, isEdit: isEditing })
       setTimeout(() => router.push(`/results/${session.session_key}`), 1200)
     } else {
       setError(result.error || 'Failed to save prediction')

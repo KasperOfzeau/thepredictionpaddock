@@ -60,6 +60,8 @@ export default function NotificationsList({ notifications }: NotificationsListPr
         return '🏎️'
       case 'points_update':
         return '🏆'
+      case 'achievement_unlocked':
+        return '🎖️'
       default:
         return '🔔'
     }

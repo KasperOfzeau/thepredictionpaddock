@@ -1,9 +1,67 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { openf1Fetch } from '@/lib/services/openf1'
+import { handlePointsFinalized } from '@/lib/services/achievements'
 import type { Prediction } from '@/lib/types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const OPENF1_FETCH_OPTIONS = { next: { revalidate: 60 } } as const
+const POINTS_CORRECT_POSITION = 5
+const POINTS_IN_TOP_10 = 1
+
+function getPredictedOrder(prediction: Prediction): number[] {
+  return [
+    prediction.position_1,
+    prediction.position_2,
+    prediction.position_3,
+    prediction.position_4,
+    prediction.position_5,
+    prediction.position_6,
+    prediction.position_7,
+    prediction.position_8,
+    prediction.position_9,
+    prediction.position_10,
+  ]
+}
+
+export function calculatePoints(prediction: Prediction, resultOrder: number[]): number {
+  const predOrder = getPredictedOrder(prediction)
+  const top10Set = new Set(resultOrder.slice(0, 10))
+  let points = 0
+  for (let i = 0; i < Math.min(10, resultOrder.length); i++) {
+    const predictedDriver = predOrder[i]
+    if (predictedDriver === resultOrder[i]) {
+      points += POINTS_CORRECT_POSITION
+    } else if (top10Set.has(predictedDriver)) {
+      points += POINTS_IN_TOP_10
+    }
+  }
+  return points
+}
+
+export interface MatchedAchievements {
+  polePerfect: boolean
+  podiumPerfect: boolean
+  fullGrid: boolean
+  lastPointExact: boolean
+}
+
+/**
+ * Which exact-position achievements this prediction satisfies against a
+ * (10-long) result order. Needs the actual matched positions, not just the
+ * points total, since e.g. 5 points could be one exact match or five
+ * top-10-but-wrong-slot hits.
+ */
+export function getMatchedAchievements(prediction: Prediction, resultOrder: number[]): MatchedAchievements {
+  const predOrder = getPredictedOrder(prediction)
+  const top10Set = new Set(resultOrder.slice(0, 10))
+  return {
+    polePerfect: predOrder[0] === resultOrder[0],
+    podiumPerfect: predOrder.slice(0, 3).every((driver, i) => driver === resultOrder[i]),
+    fullGrid: predOrder.every((driver) => top10Set.has(driver)),
+    lastPointExact: predOrder[9] === resultOrder[9],
+  }
+}
 
 /**
  * Fetch race result (driver numbers in finish order 1–10) from OpenF1.
@@ -29,9 +87,6 @@ export async function getRaceResultBySessionKey(sessionKey: number): Promise<num
   }
 }
 
-const POINTS_CORRECT_POSITION = 5
-const POINTS_IN_TOP_10 = 1
-
 async function hasSessionEnded(
   sessionKey: number,
   supabase: SupabaseClient
@@ -48,38 +103,6 @@ async function hasSessionEnded(
   if (!endIso) return false
 
   return new Date(endIso) <= new Date()
-}
-
-/**
- * Score a prediction against race result:
- * - 5 points per correct position (right driver at right place)
- * - 1 point if driver is in top 10 but not at predicted position
- * - 0 points if driver is not in top 10
- */
-export function calculatePoints(prediction: Prediction, resultOrder: number[]): number {
-  const predOrder = [
-    prediction.position_1,
-    prediction.position_2,
-    prediction.position_3,
-    prediction.position_4,
-    prediction.position_5,
-    prediction.position_6,
-    prediction.position_7,
-    prediction.position_8,
-    prediction.position_9,
-    prediction.position_10,
-  ]
-  const top10Set = new Set(resultOrder.slice(0, 10))
-  let points = 0
-  for (let i = 0; i < Math.min(10, resultOrder.length); i++) {
-    const predictedDriver = predOrder[i]
-    if (predictedDriver === resultOrder[i]) {
-      points += POINTS_CORRECT_POSITION
-    } else if (top10Set.has(predictedDriver)) {
-      points += POINTS_IN_TOP_10
-    }
-  }
-  return points
 }
 
 async function savePredictionPoints(
@@ -127,6 +150,10 @@ export async function refreshPointsForPrediction(
 
   const points = calculatePoints(prediction, resultOrder)
   const updated = await savePredictionPoints(prediction, points, supabase)
+  if (updated) {
+    const matched = getMatchedAchievements(prediction, resultOrder)
+    await handlePointsFinalized(createAdminClient(), prediction, resultOrder, points, matched)
+  }
   return { points, updated }
 }
 
@@ -156,12 +183,17 @@ export async function refreshPointsForSession(
     return updatedUserIds
   }
 
+  const admin = createAdminClient()
   await Promise.all(
     rows.map(async (row) => {
       const prediction = row as Prediction
       const points = calculatePoints(prediction, resultOrder)
       const updated = await savePredictionPoints(prediction, points, supabase)
-      if (updated) updatedUserIds.add(prediction.user_id)
+      if (updated) {
+        updatedUserIds.add(prediction.user_id)
+        const matched = getMatchedAchievements(prediction, resultOrder)
+        await handlePointsFinalized(admin, prediction, resultOrder, points, matched)
+      }
     })
   )
 
