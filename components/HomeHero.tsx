@@ -23,6 +23,17 @@ type CountdownState = {
   segments: CountdownSegment[]
 }
 
+function toSentenceCase(name: string): string {
+  return name
+    .replace(/\b\d{4}\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .split(' ')
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+    .join(' ')
+}
+
 function getCountdownState(dateStart: string, dateEnd: string, sessionName: string, now: number): CountdownState {
   const startMs = new Date(dateStart).getTime()
   const endMs = new Date(dateEnd).getTime()
@@ -113,9 +124,8 @@ export default function HomeHero({
           <span className="h-2 w-2 rounded-full bg-f1-red" />
           {session.session_name === 'Sprint' ? 'Sprint' : 'Race'}
         </div>
-        <h2 className="text-3xl sm:text-5xl md:text-7xl lg:text-8xl text-white">
-          {meeting.meeting_name.split(' ').slice(0, -2).join(' ')}{' '}
-          <b>{meeting.meeting_name.split(' ').slice(-2).join(' ')}</b>
+        <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold leading-tight text-white max-w-3xl mx-auto">
+          {toSentenceCase(meeting.meeting_official_name)}
         </h2>
         <div className="mx-auto flex w-fit flex-col items-center gap-1.5 rounded-2xl border border-white/10 bg-black/30 px-2.5 py-2.5 sm:gap-2 sm:px-4 sm:py-3.5 backdrop-blur-md">
           <div className="flex items-stretch justify-center gap-2 sm:gap-2.5">
