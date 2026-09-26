@@ -7,14 +7,36 @@ import type { TopPredictor } from '@/lib/services/leaderboard'
 import { getAllResultPageHref, getResultPageHref } from '@/lib/resultPage'
 import AvatarWithDecoration from '@/components/AvatarWithDecoration'
 
+const CIRCUITS_DIR = path.join(process.cwd(), 'public', 'images', 'circuits')
+
+let circuitFilesByLowerName: Map<string, string> | null = null
+
+// Windows' filesystem is case-insensitive, so a locally renamed image can silently
+// drift from the case actually committed to git. Production (Linux) is case-sensitive,
+// so we resolve against the real on-disk filename instead of trusting the requested case.
+function getCircuitFilesByLowerName(): Map<string, string> {
+  if (!circuitFilesByLowerName) {
+    circuitFilesByLowerName = new Map()
+    try {
+      for (const entry of fs.readdirSync(CIRCUITS_DIR)) {
+        circuitFilesByLowerName.set(entry.toLowerCase(), entry)
+      }
+    } catch {
+      // Directory missing; leave the map empty and fall back to the requested filename.
+    }
+  }
+  return circuitFilesByLowerName
+}
+
 function getCircuitImageSrc(circuitShortName: string): string {
   const base = circuitShortName.replace(/\s+/g, '-')
   const hasExtension = /\.(jpe?g|png|webp)$/i.test(base)
-  const filename = hasExtension ? base : `${base}.jpg`
+  const requestedFilename = hasExtension ? base : `${base}.jpg`
+  const filename = getCircuitFilesByLowerName().get(requestedFilename.toLowerCase()) ?? requestedFilename
   const relativePath = `/images/circuits/${filename}`
 
   try {
-    const mtime = fs.statSync(path.join(process.cwd(), 'public', relativePath)).mtimeMs
+    const mtime = fs.statSync(path.join(CIRCUITS_DIR, filename)).mtimeMs
     return `${relativePath}?v=${mtime}`
   } catch {
     return relativePath
